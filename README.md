@@ -20,6 +20,11 @@ I've decided to open source it as I think it could be useful to other astrophoto
 
 ---
 
+> **🌟 Like what you see?** This app is all about chasing stars — so why not give it one?
+> A [GitHub star](https://github.com/giancarloerra/apd/stargazers) helps others discover APD and keeps the motivation going. Cheers! ⭐
+
+---
+
 ## Table of Contents
 
 - [✨ Features](#-features)
