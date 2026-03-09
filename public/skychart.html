@@ -1,0 +1,3112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sky Dashboard — APD</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/3.6.5/aladin.js" charset="utf-8"></script>
+    <link rel="stylesheet" href="/theme.css">
+    <style>
+        @keyframes starPulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.7); } }
+        .nav-buttons a { background: rgba(var(--accent-rgb),0.08) !important; }
+        .nav-buttons a:hover { background: rgba(var(--accent-rgb),0.18) !important; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000; color: #eee; overflow: hidden;
+        }
+        #app-container { position: relative; width: 100%; height: 100%; display: flex; flex-direction: row; }
+        #map-area { position: relative; flex: 1; min-width: 0; height: 100%; overflow: hidden; transition: flex 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        #aladin-lite-div { width: 100%; height: 100%; transition: filter 0.1s ease-out; }
+
+        #overlay-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 990;
+        }
+        #darken-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 1080;
+        }
+
+        #fov-overlay {
+            position: absolute; top: 50%; left: 50%; width: 0; height: 0; pointer-events: none; z-index: 1000;
+        }
+        #camera-fov-box {
+            position: absolute; border: 2px solid rgba(255, 40, 40, 0.85);
+            transform: translate(-50%, -50%) rotate(0deg); box-sizing: border-box;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(0,0,0,0.6);
+            transition: width 0.1s, height 0.1s, border-color 0.2s;
+            pointer-events: auto; cursor: pointer;
+        }
+        #camera-fov-box.fov-locked {
+            border-color: rgba(255, 170, 0, 0.9);
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(0,0,0,0.6), 0 0 8px rgba(255,170,0,0.3);
+        }
+        #fov-lock-icon {
+            pointer-events: none; margin-left: 3px; vertical-align: middle;
+            display: inline-block; width: 10px; height: 12px;
+        }
+        #fov-lock-icon svg { width: 100%; height: 100%; fill: currentColor; }
+        #camera-fov-box::after { content: ''; position: absolute; top: 50%; left: 50%; width: 14px; height: 1px; background: rgba(255,40,40,0.6); transform: translate(-50%, -50%); }
+        #camera-fov-box::before { content: ''; position: absolute; top: 50%; left: 50%; width: 1px; height: 14px; background: rgba(255,40,40,0.6); transform: translate(-50%, -50%); }
+        #fov-name-label {
+            position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%);
+            color: rgba(255, 40, 40, 0.9); font-size: 0.72rem; font-weight: bold;
+            white-space: nowrap; text-shadow: 1px 1px 3px #000, -1px -1px 3px #000;
+            display: flex; align-items: center; gap: 0;
+        }
+        .fov-locked #fov-name-label { color: rgba(255, 170, 0, 0.9); }
+
+        /* ===== MOSAIC TILES ===== */
+        .mosaic-tile {
+            position: absolute;
+            border: 1.5px solid rgba(180, 100, 255, 0.75);
+            box-sizing: border-box;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+            pointer-events: none;
+        }
+        .mosaic-tile .mosaic-num {
+            position: absolute;
+            bottom: 2px;
+            right: 3px;
+            color: rgba(210, 150, 255, 0.95);
+            font-size: 0.52rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px #000, -1px -1px 2px #000;
+            line-height: 1;
+        }
+
+        #labels-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 1050; overflow: hidden;
+        }
+        .cardinal-label {
+            position: absolute; transform: translate(-50%, -50%); color: #ff3333; font-weight: bold; font-size: 1.2rem;
+            text-shadow: 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000; display: none;
+        }
+        .cardinal-label.zenith-label { color: #ff3333; font-size: 0.95rem; }
+
+        .sky-label {
+            position: absolute; pointer-events: none;
+            text-shadow: 1px 1px 3px #000, -1px -1px 3px #000, 1px -1px 3px #000, -1px 1px 3px #000, 0 0 8px rgba(0,0,0,0.9);
+            display: none; white-space: nowrap; will-change: transform;
+        }
+        .constellation-label {
+            color: rgba(var(--accent-rgb), 0.9); font-size: 0.72rem; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 2px;
+        }
+        .star-label {
+            color: rgba(255, 255, 220, 0.95); font-size: 0.7rem; font-style: italic;
+        }
+
+        /* Moon marker */
+        .moon-marker {
+            position: absolute; pointer-events: none; text-align: center; display: none;
+            filter: drop-shadow(0 0 6px rgba(255,255,200,0.5));
+        }
+        .moon-marker .moon-emoji { font-size: 1.6rem; line-height: 1; }
+        .moon-marker .moon-info {
+            display: block; font-size: 0.6rem; color: #ffd; margin-top: 1px;
+            text-shadow: 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000;
+        }
+
+        /* Planet markers */
+        .planet-marker {
+            position: absolute; pointer-events: none; text-align: center; display: none;
+        }
+        .planet-marker .planet-dot {
+            display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+            box-shadow: 0 0 6px 2px currentColor;
+        }
+        .planet-marker .planet-name {
+            display: block; font-size: 0.6rem; margin-top: 2px; font-weight: bold;
+            text-shadow: 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000;
+        }
+
+        /* Red night mode overlay */
+        #night-mode-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #ff0000; mix-blend-mode: multiply;
+            pointer-events: none; z-index: 9999; display: none;
+        }
+
+        /* DSO labels */
+        .dso-label { font-size: 0.62rem; font-weight: bold; }
+        .dso-label.dso-gx { color: rgba(255, 170, 210, 0.95); }
+        .dso-label.dso-nb { color: rgba(120, 255, 160, 0.95); }
+        .dso-label.dso-dn { color: rgba(210, 150, 110, 0.95); }
+        .dso-label.dso-gc { color: rgba(255, 255, 130, 0.95); }
+        .dso-label.dso-oc { color: rgba(255, 220, 110, 0.95); }
+        .dso-label.dso-pn { color: rgba(100, 235, 255, 0.95); }
+        .dso-type-row { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+        .dso-type-row label { font-size: 0.8rem; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+
+        /* FOV & Favorites list styles */
+        .fov-list, .fav-list { list-style: none; margin: 0; padding: 0; }
+        .fov-list li, .fav-list li {
+            display: flex; align-items: center; gap: 6px; padding: 4px 6px;
+            border-radius: 4px; cursor: pointer; font-size: 0.85rem; transition: 0.15s;
+        }
+        .fov-list li:hover, .fav-list li:hover { background: rgba(255,255,255,0.08); }
+        .fov-list li.active { background: rgba(255,40,40,0.2); border: 1px solid rgba(255,40,40,0.4); }
+        .fav-list li.active { background: rgba(var(--accent-rgb),0.15); border: 1px solid rgba(var(--accent-rgb),0.3); }
+        .fov-list li span.fov-dims, .fav-list li span.fav-coords { color: #888; font-size: 0.75rem; margin-left: auto; }
+        .item-del-btn {
+            background: none; border: none; color: #ff4444; cursor: pointer; font-size: 0.9rem;
+            padding: 0 4px; opacity: 0.5; transition: 0.15s; line-height: 1;
+        }
+        .item-del-btn:hover { opacity: 1; }
+        .add-item-row { display: flex; gap: 4px; margin-top: 6px; }
+
+        /* Panel toggle tab — sits between map and panel as a flex-none element */
+        #panel-tab {
+            flex: none; width: 0; height: 100%; position: relative;
+            z-index: 2001;
+        }
+        #panel-tab-btn {
+            position: absolute; top: 50%; right: 0; transform: translateY(-50%);
+            background: rgba(20, 20, 20, 0.92); color: var(--accent); border: 1px solid rgba(255,255,255,0.1);
+            border-right: none; border-radius: 8px 0 0 8px; padding: 8px 4px;
+            cursor: pointer; writing-mode: vertical-rl; text-orientation: mixed;
+            font-size: 0.62rem; font-weight: bold; letter-spacing: 3px; text-transform: uppercase;
+            backdrop-filter: blur(8px); user-select: none; -webkit-user-select: none;
+            transition: background 0.2s;
+            touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+            display: flex; flex-direction: row; align-items: center; gap: 0;
+        }
+        #panel-tab-btn:hover { background: rgba(40, 40, 40, 0.95); }
+        #panel-tab-btn::before { content: '◀'; writing-mode: horizontal-tb; display: block; text-align: center; margin-bottom: 6px; font-size: 0.6rem; }
+        #panel-tab-btn::after { content: '◀'; writing-mode: horizontal-tb; display: block; text-align: center; margin-top: 6px; font-size: 0.6rem; }
+        #ui-panel.open ~ #panel-tab #panel-tab-btn::before,
+        #app-container.panel-open #panel-tab-btn::before { content: '▶'; }
+        #ui-panel.open ~ #panel-tab #panel-tab-btn::after,
+        #app-container.panel-open #panel-tab-btn::after { content: '▶'; }
+
+        /* UI Panel — push drawer from right */
+        #ui-panel {
+            width: 0; min-width: 0; height: 100%;
+            background: rgba(20, 20, 20, 0.92);
+            box-shadow: -4px 0 20px rgba(0,0,0,0.8);
+            backdrop-filter: blur(8px); border-left: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex; flex-direction: column; box-sizing: border-box;
+            overflow: hidden;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #ui-panel.open { width: 350px; min-width: 350px; }
+        #panel-header { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 15px 10px; border-bottom: 1px solid #444; flex-shrink: 0; }
+        #panel-header h2 { margin: 0; font-size: 1.15rem; color: #fff; text-transform: uppercase; letter-spacing: 1px; }
+        #panel-content { padding: 0 15px 15px 15px; overflow-y: auto; flex: 1; }
+        #panel-content::-webkit-scrollbar { width: 6px; }
+        #panel-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+        #panel-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+        .mode-toggle { display: flex; margin: 15px 0 5px 0; border-radius: 6px; overflow: hidden; border: 1px solid var(--accent); }
+        .mode-toggle button { flex: 1; background: #1a1a1a; color: #aaa; border: none; padding: 10px; cursor: pointer; font-weight: bold; transition: 0.2s; border-radius: 0; }
+        .mode-toggle button.active { background: var(--accent); color: #000; }
+
+        .section-title { margin-top: 15px; margin-bottom: 10px; font-size: 0.95rem; border-bottom: 1px solid #444; padding-bottom: 3px; color: var(--accent); text-transform: uppercase; }
+        .control-group { margin-bottom: 14px; }
+        .control-group label { display: block; font-size: 0.85rem; margin-bottom: 5px; color: #ccc; }
+        input[type="text"], input[type="number"], select {
+            width: 100%; box-sizing: border-box; background: #111; color: #fff; border: 1px solid #555; padding: 8px; border-radius: 4px; font-size: 0.95rem;
+        }
+        select option { background: #111; color: #fff; }
+        optgroup { color: var(--accent); font-weight: bold; background: #000; }
+        input[type="range"] { width: 100%; margin-top: 5px; accent-color: var(--accent); }
+        button.action-btn { background: var(--accent); color: #000; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; font-weight: bold; transition: 0.2s; width: 100%; }
+        button.action-btn:hover { background: var(--accent-hover); }
+        button.time-btn { background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; cursor: pointer; padding: 5px 0; font-weight: bold; flex: 1; transition: 0.2s; }
+        button.time-btn:hover { background: #555; }
+        .flex-row { display: flex; gap: 6px; }
+        .val-display { font-family: 'Courier New', Courier, monospace; color: #00ff00; font-size: 0.95rem; }
+        .overlay-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: pointer; }
+        input[type="checkbox"] { accent-color: var(--accent); }
+        .overlay-row input[type="checkbox"] { margin: 0; width: 16px; height: 16px; }
+
+        /* Collapsible sub-panels */
+        .sub-panel { margin-bottom: 6px; border: 1px solid #333; border-radius: 6px; overflow: hidden; }
+        .sub-panel-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 10px; background: rgba(255,255,255,0.04); cursor: pointer;
+            user-select: none; -webkit-user-select: none; transition: background 0.15s;
+        }
+        .sub-panel-header:hover { background: rgba(255,255,255,0.08); }
+        .sub-panel-header .sp-title {
+            font-size: 0.85rem; font-weight: bold; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .sub-panel-header .sp-arrow {
+            font-size: 0.7rem; color: #888; transition: transform 0.2s;
+        }
+        .sub-panel.collapsed .sub-panel-body { display: none; }
+        .sub-panel.collapsed .sp-arrow { transform: rotate(-90deg); }
+        .sub-panel-body { padding: 8px 10px 4px 10px; }
+        .sub-panel-body .control-group { margin-bottom: 10px; }
+        .sub-panel-body .control-group:last-child { margin-bottom: 4px; }
+
+        /* Per-panel colour theming */
+        #sp-camera   { border-color: #3b82f6; }
+        #sp-camera   .sub-panel-header { background: rgba(59,130,246,0.25); }
+        #sp-camera   .sub-panel-header:hover { background: rgba(59,130,246,0.42); }
+        #sp-camera   .sub-panel-header .sp-title { color: #dbeafe; }
+
+        #sp-favorites { border-color: #ec4899; }
+        #sp-favorites .sub-panel-header { background: rgba(236,72,153,0.22); }
+        #sp-favorites .sub-panel-header:hover { background: rgba(236,72,153,0.38); }
+        #sp-favorites .sub-panel-header .sp-title { color: #fce7f3; }
+
+        #sp-time     { border-color: #f97316; }
+        #sp-time     .sub-panel-header { background: rgba(249,115,22,0.25); }
+        #sp-time     .sub-panel-header:hover { background: rgba(249,115,22,0.42); }
+        #sp-time     .sub-panel-header .sp-title { color: #ffedd5; }
+
+        #sp-horizon  { border-color: #f43f5e; }
+        #sp-horizon  .sub-panel-header { background: rgba(244,63,94,0.22); }
+        #sp-horizon  .sub-panel-header:hover { background: rgba(244,63,94,0.38); }
+        #sp-horizon  .sub-panel-header .sp-title { color: #ffe4e6; }
+
+        #sp-overlays { border-color: #10b981; }
+        #sp-overlays .sub-panel-header { background: rgba(16,185,129,0.22); }
+        #sp-overlays .sub-panel-header:hover { background: rgba(16,185,129,0.38); }
+        #sp-overlays .sub-panel-header .sp-title { color: #d1fae5; }
+
+        #sp-density  { border-color: #eab308; }
+        #sp-density  .sub-panel-header { background: rgba(234,179,8,0.22); }
+        #sp-density  .sub-panel-header:hover { background: rgba(234,179,8,0.38); }
+        #sp-density  .sub-panel-header .sp-title { color: #fef9c3; }
+
+        #sp-dso      { border-color: #a855f7; }
+        #sp-dso      .sub-panel-header { background: rgba(168,85,247,0.22); }
+        #sp-dso      .sub-panel-header:hover { background: rgba(168,85,247,0.38); }
+        #sp-dso      .sub-panel-header .sp-title { color: #f3e8ff; }
+
+        #sp-discover { border-color: #06b6d4; }
+        #sp-discover .sub-panel-header { background: rgba(6,182,212,0.22); }
+        #sp-discover .sub-panel-header:hover { background: rgba(6,182,212,0.38); }
+        #sp-discover .sub-panel-header .sp-title { color: #cffafe; }
+
+        #sp-settings { border-color: #64748b; }
+        #sp-settings .sub-panel-header { background: rgba(100,116,139,0.28); }
+        #sp-settings .sub-panel-header:hover { background: rgba(100,116,139,0.46); }
+        #sp-settings .sub-panel-header .sp-title { color: #e2e8f0; }
+
+        /* Compact slider row */
+        .compact-slider { margin-bottom: 8px; }
+        .compact-slider .cs-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;
+        }
+        .compact-slider .cs-header label { margin: 0; font-size: 0.8rem; color: #bbb; }
+        .compact-slider .cs-header .val-display { font-size: 0.8rem; }
+        .compact-slider input[type="range"] { margin-top: 0; }
+
+        @media screen and (max-width: 768px) {
+            /* Side overlay covering most of screen, tab always on right edge */
+            #ui-panel.open { width: 88vw; min-width: 0; max-width: 380px; }
+            #panel-tab-btn { padding: 6px 3px; font-size: 0.55rem; letter-spacing: 2px; }
+        }
+        @media screen and (max-width: 480px) {
+            /* Phone: panel overlays full screen from the right, tab always on right edge */
+            #ui-panel.open { width: 92vw; min-width: 0; max-width: none; }
+            /* Quick bar: wrap into ~2 rows on narrow screens */
+            #quick-bar {
+                bottom: 6px; padding: 3px 6px; gap: 2px;
+                flex-wrap: wrap; justify-content: center;
+                max-width: 96vw; width: max-content;
+            }
+            #quick-bar button { padding: 5px 8px; font-size: 0.78rem; }
+            #qb-search { width: 62px; font-size: 0.76rem; padding: 4px 5px; }
+            #qb-search:focus { width: 88px; }
+            /* Make vertical separators shorter so they fit in wrapped rows */
+            .qb-sep { height: 16px; }
+            /* Hide some separators between groups that end up on same row naturally */
+            #quick-bar .qb-sep:last-of-type { display: none; }
+        }
+
+        /* ===== QUICK-ACCESS BAR ===== */
+        #quick-bar {
+            position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+            display: flex; align-items: center; gap: 4px;
+            background: rgba(15, 15, 15, 0.9); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
+            padding: 4px 8px; z-index: 1500;
+            max-width: 96vw; box-shadow: 0 2px 12px rgba(0,0,0,0.6);
+            user-select: none; -webkit-user-select: none;
+        }
+        #quick-bar button {
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+            color: #ddd; border-radius: 6px; padding: 5px 8px;
+            font-size: 0.8rem; cursor: pointer; transition: background 0.15s;
+            white-space: nowrap; line-height: 1;
+        }
+        #quick-bar button:hover { background: rgba(255,255,255,0.18); }
+        #quick-bar button:active { background: rgba(var(--accent-rgb),0.3); }
+        .qb-group { display: flex; gap: 2px; align-items: center; }
+        .qb-sep { width: 1px; height: 22px; background: rgba(255,255,255,0.15); margin: 0 2px; flex-shrink: 0; }
+        #qb-search {
+            background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2);
+            color: #fff; border-radius: 6px; padding: 5px 8px;
+            font-size: 0.8rem; width: 90px; outline: none; transition: width 0.2s;
+        }
+        #qb-search::placeholder { color: #777; }
+        #qb-search:focus { border-color: var(--accent); width: 130px; }
+        .qb-toggle.active { background: var(--accent) !important; color: #000 !important; font-weight: bold; }
+        .qb-toggle.active .qb-icon { color: #000; }
+        #qb-now { font-size: 0.65rem; font-weight: bold; padding: 5px 6px; text-align: center; cursor: pointer; line-height: 1.15; }
+        #qb-now .qb-time-label { display: block; font-size: 0.55rem; letter-spacing: 0.5px; opacity: 0.7; }
+        #qb-now .qb-time-val { display: block; font-size: 0.7rem; font-family: 'Courier New', monospace; white-space: nowrap; }
+        #qb-now.live { color: #00ff00; border-color: rgba(0,255,0,0.3); }
+        #qb-now.static { color: #ffaa00; border-color: rgba(255,170,0,0.3); }
+
+        /* Mono-color SVG icons in quick bar */
+        .qb-icon { width: 16px; height: 16px; vertical-align: middle; color: var(--accent); }
+        #quick-bar button { color: var(--accent); }
+        #quick-bar button:hover .qb-icon { color: var(--accent-light); }
+        #qb-night.active { background: rgba(255,0,0,0.25) !important; color: #ff4444 !important; border-color: rgba(255,0,0,0.4); }
+        #qb-night.active .qb-icon { color: #ff4444; }
+        #qb-fov-lock.active { background: rgba(255,170,0,0.25) !important; color: #ffaa00 !important; border-color: rgba(255,170,0,0.4); }
+        #qb-fov-lock.active .qb-icon { color: #ffaa00; }
+
+        /* ===== DISCOVER PANEL ===== */
+        .discover-section { margin-bottom: 12px; }
+        .discover-section:last-child { margin-bottom: 4px; }
+        .discover-section-label {
+            font-size: 0.8rem; font-weight: bold; color: #ccc;
+            margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .filter-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+        .filter-chip {
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+            color: #aaa; border-radius: 12px; padding: 3px 10px; font-size: 0.72rem;
+            cursor: pointer; transition: 0.15s; user-select: none;
+        }
+        .filter-chip:hover { background: rgba(255,255,255,0.15); }
+        .filter-chip.active { background: rgba(var(--accent-rgb),0.25); border-color: var(--accent); color: var(--accent); font-weight: bold; }
+        .discover-results { max-height: 260px; overflow-y: auto; }
+        .discover-results::-webkit-scrollbar { width: 5px; }
+        .discover-results::-webkit-scrollbar-track { background: transparent; }
+        .discover-results::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+        .discover-card {
+            display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px;
+            border-radius: 5px; transition: 0.15s; cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .discover-card:hover { background: rgba(255,255,255,0.06); }
+        .discover-card .dc-img {
+            width: 48px; height: 48px; border-radius: 4px; object-fit: cover;
+            background: #222; flex-shrink: 0;
+        }
+        .discover-card .dc-info { flex: 1; min-width: 0; }
+        .discover-card .dc-name {
+            font-size: 0.82rem; font-weight: bold; color: #eee;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .discover-card .dc-meta {
+            font-size: 0.7rem; color: #888; margin-top: 1px;
+        }
+        .discover-card .dc-actions {
+            display: flex; gap: 3px; flex-shrink: 0; align-self: center;
+        }
+        .discover-card .dc-actions button {
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+            color: #ccc; border-radius: 4px; padding: 3px 6px; font-size: 0.72rem;
+            cursor: pointer; transition: 0.15s; line-height: 1;
+        }
+        .discover-card .dc-actions button:hover { background: rgba(var(--accent-rgb),0.2); color: var(--accent); }
+        .discover-empty {
+            text-align: center; color: #666; font-size: 0.8rem; padding: 16px 8px;
+        }
+        .discover-loading {
+            text-align: center; color: var(--accent); font-size: 0.8rem; padding: 12px 8px;
+        }
+        .discover-error {
+            text-align: center; color: #ff4444; font-size: 0.78rem; padding: 8px;
+        }
+        /* Solar times compact bar */
+        .solar-times-bar {
+            display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 6px 0 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 10px;
+        }
+        .solar-times-bar .st-item {
+            font-size: 0.72rem; color: #aaa;
+        }
+        .solar-times-bar .st-item .st-label { color: #777; }
+        .solar-times-bar .st-item .st-val { color: #ffcc00; font-family: 'Courier New', monospace; }
+        /* Telescopius list select */
+        #telescopius-lists-select { margin-bottom: 6px; }
+        .tl-import-row { display: flex; gap: 4px; margin-bottom: 8px; }
+        .tl-import-row button { flex: 0; white-space: nowrap; }
+
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="map-area">
+        <div id="aladin-lite-div"></div>
+        <canvas id="overlay-canvas"></canvas>
+        <canvas id="darken-canvas"></canvas>
+        <div id="labels-container"></div>
+
+        <div id="night-mode-overlay"></div>
+        <div id="fov-overlay">
+            <div id="camera-fov-box">
+                <span id="fov-name-label"><span id="fov-name-text"></span><span id="fov-lock-icon"><svg viewBox="0 0 24 24"><path d="M18 10h-1V7A5 5 0 0 0 7 7v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2zM9 7a3 3 0 0 1 6 0v3H9V7zm9 13H6v-8h12v8z"/></svg></span></span>
+            </div>
+        </div>
+
+        <!-- QUICK ACCESS BAR -->
+        <div id="quick-bar">
+            <div class="qb-group">
+                <input type="text" id="qb-search" placeholder="Search…">
+                <button id="qb-search-btn" title="Go to object"><svg class="qb-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><line x1="16.5" y1="16.5" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+            </div>
+            <div class="qb-sep"></div>
+            <div class="qb-group">
+                <button id="qb-framing" class="qb-toggle active" title="Camera & Mount"><svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+                <button id="qb-skychart" class="qb-toggle" title="Sky Chart"><svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M4.5 7h15M4.5 17h15"/></svg></button>
+            </div>
+            <div class="qb-sep"></div>
+            <div class="qb-group">
+                <button onclick="offsetTime('h',-1)" title="−1 hour"><svg class="qb-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg></button>
+                <button id="qb-now" class="live" onclick="setTimeNow()" title="Reset to Now">
+                    <span class="qb-time-label">LIVE</span>
+                    <span class="qb-time-val" id="qb-time-val"></span>
+                </button>
+                <button onclick="offsetTime('h',1)" title="+1 hour"><svg class="qb-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg></button>
+            </div>
+            <div class="qb-sep"></div>
+            <button id="qb-reset" title="Reset to defaults"><svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>
+            <div class="qb-sep"></div>
+            <div class="qb-group">
+                <button id="qb-zout" title="Zoom out"><svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+                <button id="qb-zin" title="Zoom in"><svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            </div>
+            <div class="qb-sep"></div>
+            <button id="qb-night" title="Night mode"><svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+            <div class="qb-sep"></div>
+            <div class="qb-group">
+                <button id="qb-fov-lock" title="Lock/Unlock FOV"><svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
+                <button id="qb-fov-center" title="Re-center on locked FOV"><svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/></svg></button>
+            </div>
+        </div>
+    </div><!-- /map-area -->
+
+    <div id="panel-tab"><div id="panel-tab-btn">Sky Dashboard</div></div>
+
+    <div id="ui-panel">
+        <div id="panel-header">
+            <h2 style="width:100%;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px">
+              <span style="position:relative;display:inline-flex;align-items:center">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M8 21l3.105-6.21"/><circle cx="12" cy="4" r="2"/></svg>
+                <svg class="sky-dash-star" width="10" height="10" viewBox="0 0 24 24" fill="#fbbf24" stroke="#fbbf24" stroke-width="1" style="position:absolute;top:-5px;right:-7px;animation:starPulse 2s ease-in-out infinite"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </span>
+              Sky Dashboard
+            </h2>
+            <div class="nav-buttons" style="display:flex;gap:6px;justify-content:center;flex-wrap:nowrap;">
+                <a href="/" title="Home" style="display:inline-flex;align-items:center;justify-content:center;padding:7px;background:rgba(var(--accent-rgb),0.08);border:1px solid rgba(var(--accent-rgb),0.2);border-radius:6px;color:var(--accent);text-decoration:none;transition:background 0.15s;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></a>
+                <a href="/weather" title="Weather Dashboard" style="display:inline-flex;align-items:center;justify-content:center;padding:7px;background:rgba(var(--accent-rgb),0.08);border:1px solid rgba(var(--accent-rgb),0.2);border-radius:6px;color:var(--accent);text-decoration:none;transition:background 0.15s;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/></svg></a>
+                <a href="/settings" title="Settings" style="display:inline-flex;align-items:center;justify-content:center;padding:7px;background:rgba(var(--accent-rgb),0.08);border:1px solid rgba(var(--accent-rgb),0.2);border-radius:6px;color:var(--accent);text-decoration:none;transition:background 0.15s;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg></a>
+                <a href="/about" title="About" style="display:inline-flex;align-items:center;justify-content:center;padding:7px;background:rgba(var(--accent-rgb),0.08);border:1px solid rgba(var(--accent-rgb),0.2);border-radius:6px;color:var(--accent);text-decoration:none;transition:background 0.15s;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4m0-4h.01"/></svg></a>
+            </div>
+        </div>
+        <div id="panel-content">
+            <div class="mode-toggle">
+                <button id="btn-mode-framing" class="active" onclick="setAppMode('framing')">Framing</button>
+                <button id="btn-mode-skychart" onclick="setAppMode('skychart')">Sky Chart</button>
+            </div>
+
+            <!-- TARGET & NAVIGATION (always visible) -->
+            <div class="control-group flex-row" style="margin-top: 10px; margin-bottom: 5px;">
+                <button class="action-btn" id="zoom-in">Zoom In (+)</button>
+                <button class="action-btn" id="zoom-out">Zoom Out (-)</button>
+            </div>
+            <div class="control-group">
+                <div style="display: flex; justify-content: space-between; background: rgba(0,0,0,0.4); padding: 5px; border-radius: 4px; border: 1px solid #333;">
+                    <div style="color: #aaa; font-size: 0.85rem;">RA: <span id="ra-val" class="val-display">00h 00m</span></div>
+                    <div style="color: #aaa; font-size: 0.85rem;">DEC: <span id="dec-val" class="val-display">+00° 00'</span></div>
+                </div>
+            </div>
+            <div class="control-group">
+                <div class="flex-row">
+                    <input type="text" id="search-input" placeholder="e.g. M 42, IC 434" style="flex: 0.7;">
+                    <button class="action-btn" id="search-btn" style="flex: 0.3;">Go</button>
+                </div>
+            </div>
+
+            <!-- CAMERA FRAMING -->
+            <div id="section-framing">
+                <div class="sub-panel collapsed" id="sp-camera">
+                    <div class="sub-panel-header" onclick="toggleSubPanel('sp-camera')">
+                        <span class="sp-title">Camera Framing & Mount</span>
+                        <span class="sp-arrow">▼</span>
+                    </div>
+                    <div class="sub-panel-body">
+                        <div class="control-group">
+                            <label>Telescope Mount Type</label>
+                            <select id="mount-select" style="border-color: var(--accent);">
+                                <option value="eq">Equatorial (Aligned to RA/Dec)</option>
+                                <option value="altaz">Alt-Az (Aligned to Horizon)</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label>Camera Sensor FOVs</label>
+                            <ul class="fov-list" id="fov-list"></ul>
+                            <div class="add-item-row">
+                                <input type="text" id="fov-add-name" placeholder="Name" style="flex: 1;">
+                                <input type="text" id="fov-add-w" placeholder="W°" style="width: 50px;">
+                                <input type="text" id="fov-add-h" placeholder="H°" style="width: 50px;">
+                                <button class="action-btn" id="fov-add-btn" style="flex: 0; padding: 8px 10px; white-space: nowrap;">+</button>
+                            </div>
+                        </div>
+                        <div class="compact-slider">
+                            <div class="cs-header">
+                                <label>Camera Angle Offset</label>
+                                <span id="rotation-val" class="val-display" style="color: #fff;">0°</span>
+                            </div>
+                            <input type="range" id="rotation-slider" min="0" max="360" step="1" value="0">
+                        </div>
+
+                        <!-- ===== MOSAIC ===== -->
+                        <div style="border-top:1px solid #333;margin-top:10px;padding-top:8px;">
+                            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;margin-bottom:6px;font-size:0.85rem;color:#ccc;">
+                                <input type="checkbox" id="mosaic-enabled"> Mosaic Mode
+                            </label>
+                            <div id="mosaic-controls" style="display:none;">
+                                <div style="display:flex;gap:6px;margin-bottom:5px;">
+                                    <div style="flex:1;text-align:center;">
+                                        <label style="font-size:0.7rem;color:#aaa;display:block;margin-bottom:2px;">Cols</label>
+                                        <input type="number" id="mosaic-cols" value="2" min="1" max="10" style="text-align:center;padding:4px 2px;">
+                                    </div>
+                                    <div style="flex:1;text-align:center;">
+                                        <label style="font-size:0.7rem;color:#aaa;display:block;margin-bottom:2px;">Rows</label>
+                                        <input type="number" id="mosaic-rows" value="2" min="1" max="10" style="text-align:center;padding:4px 2px;">
+                                    </div>
+                                    <div style="flex:1;text-align:center;">
+                                        <label style="font-size:0.7rem;color:#aaa;display:block;margin-bottom:2px;">Overlap %</label>
+                                        <input type="number" id="mosaic-overlap" value="10" min="0" max="50" style="text-align:center;padding:4px 2px;">
+                                    </div>
+                                </div>
+                                <div id="mosaic-info" style="font-size:0.7rem;color:#cc88ff;text-align:center;padding:2px 0 4px 0;">2×2, 10% overlap — 4 panels</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sub-panel collapsed" id="sp-favorites">
+                    <div class="sub-panel-header" onclick="toggleSubPanel('sp-favorites')">
+                        <span class="sp-title">Favorite Targets</span>
+                        <span class="sp-arrow">▼</span>
+                    </div>
+                    <div class="sub-panel-body">
+                        <div class="control-group">
+                            <ul class="fav-list" id="fav-list"></ul>
+                            <div class="add-item-row">
+                                <input type="text" id="fav-add-name" placeholder="Name (e.g. Orion Nebula)" style="flex: 1;">
+                                <button class="action-btn" id="fav-add-btn" style="flex: 0; padding: 8px 10px; white-space: nowrap;" title="Save current RA/Dec/rotation as favorite">★</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SKY CHART -->
+            <div id="section-skychart" style="display: none;">
+                <div class="sub-panel collapsed" id="sp-time">
+                    <div class="sub-panel-header" onclick="toggleSubPanel('sp-time')">
+                        <span class="sp-title">Time Control</span>
+                        <span class="sp-arrow">▼</span>
+                    </div>
+                    <div class="sub-panel-body">
+                        <div class="control-group">
+                            <div id="time-display" style="text-align: center; font-size: 0.9rem; margin-bottom: 8px; font-weight: bold; color: #00ff00;">LIVE CLOCK</div>
+                            <div class="flex-row" style="margin-bottom: 4px;">
+                                <button class="time-btn" onclick="offsetTime('h', 1)">+1h</button>
+                                <button class="time-btn" onclick="offsetTime('d', 1)">+1d</button>
+                                <button class="time-btn" onclick="offsetTime('M', 1)">+1M</button>
+                            </div>
+                            <div class="flex-row">
+                                <button class="time-btn" onclick="offsetTime('h', -1)">-1h</button>
+                                <button class="time-btn" onclick="offsetTime('d', -1)">-1d</button>
+                                <button class="time-btn" onclick="offsetTime('M', -1)">-1M</button>
+                            </div>
+                            <button class="action-btn" onclick="setTimeNow()" style="margin-top: 6px; background: #ff4444; color: white;">Reset to NOW</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sub-panel collapsed" id="sp-horizon">
+                    <div class="sub-panel-header" onclick="toggleSubPanel('sp-horizon')">
+                        <span class="sp-title">Horizon & Grid</span>
+                        <span class="sp-arrow">▼</span>
+                    </div>
+                    <div class="sub-panel-body" style="font-size: 0.9rem;">
+                        <label class="overlay-row"><input type="checkbox" id="chk-horizon" checked> Horizon Line</label>
+                        <label class="overlay-row"><input type="checkbox" id="chk-darken-ground"> Darken below horizon</label>
+                        <label class="overlay-row"><input type="checkbox" id="chk-grid" checked> Alt-Az Grid</label>
+                        <label class="overlay-row"><input type="checkbox" id="chk-eq-grid"> Equatorial Grid (RA/Dec)</label>
+                        <div class="compact-slider" style="margin-top: 8px;">
+                            <div class="cs-header">
+                                <label>Grid & Horizon Opacity</label>
+                                <span id="grid-opacity-val" class="val-display" style="color: #fff;">85%</span>
+                            </div>
+                            <input type="range" id="grid-opacity-slider" min="5" max="100" step="5" value="85"
+                                oninput="gridOverlayOpacity=eqGridOpacity=this.value/100; document.getElementById('grid-opacity-val').innerText=this.value+'%'">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OVERLAYS (toggles) -->
+            <div class="sub-panel collapsed" id="sp-overlays">
+                <div class="sub-panel-header" onclick="toggleSubPanel('sp-overlays')">
+                    <span class="sp-title">Objects Overlays</span>
+                    <span class="sp-arrow">▼</span>
+                </div>
+                <div class="sub-panel-body" style="font-size: 0.9rem;">
+                    <label class="overlay-row"><input type="checkbox" id="chk-constellations"> Constellation Lines</label>
+                    <label class="overlay-row"><input type="checkbox" id="chk-const-labels"> Constellation Names</label>
+                    <label class="overlay-row"><input type="checkbox" id="chk-stars"> Star Dots</label>
+                    <label class="overlay-row"><input type="checkbox" id="chk-star-labels"> Star Names</label>
+                    <label class="overlay-row"><input type="checkbox" id="chk-moon"> Moon</label>
+                    <label class="overlay-row"><input type="checkbox" id="chk-planets"> Planets</label>
+                    <label class="overlay-row"><input type="checkbox" id="chk-nightmode"> 🔴 Red Night Mode</label>
+                </div>
+            </div>
+
+            <!-- DENSITY & OPACITY -->
+            <div class="sub-panel collapsed" id="sp-density">
+                <div class="sub-panel-header" onclick="toggleSubPanel('sp-density')">
+                    <span class="sp-title">Stars Density & Opacity</span>
+                    <span class="sp-arrow">▼</span>
+                </div>
+                <div class="sub-panel-body">
+                    <div class="compact-slider">
+                        <div class="cs-header">
+                            <label>Star Density</label>
+                            <span id="mag-limit-val" class="val-display" style="color: #fff;">5.0</span>
+                        </div>
+                        <input type="range" id="mag-slider" min="1" max="10" step="0.5" value="5" oninput="document.getElementById('mag-limit-val').innerText=parseFloat(this.value).toFixed(1)">
+                    </div>
+                    <div class="compact-slider">
+                        <div class="cs-header">
+                            <label>Name Density</label>
+                            <span id="name-mag-val" class="val-display" style="color: #fff;">3.0</span>
+                        </div>
+                        <input type="range" id="name-mag-slider" min="0" max="6" step="0.5" value="3" oninput="document.getElementById('name-mag-val').innerText=parseFloat(this.value).toFixed(1)">
+                    </div>
+                    <div class="compact-slider">
+                        <div class="cs-header">
+                            <label>Constellation Opacity</label>
+                            <span id="const-opacity-val" class="val-display" style="color: #fff;">50%</span>
+                        </div>
+                        <input type="range" id="const-opacity-slider" min="5" max="100" step="5" value="50"
+                            oninput="currentConstOpacity=this.value/100; document.getElementById('const-opacity-val').innerText=this.value+'%'">
+                    </div>
+                    <div class="compact-slider">
+                        <div class="cs-header">
+                            <label>Stars Opacity</label>
+                            <span id="stars-opacity-val" class="val-display" style="color: #fff;">80%</span>
+                        </div>
+                        <input type="range" id="stars-opacity-slider" min="5" max="100" step="5" value="80"
+                            oninput="currentStarsOpacity=this.value/100; document.getElementById('stars-opacity-val').innerText=this.value+'%'">
+                    </div>
+                </div>
+            </div>
+
+            <!-- DEEP SKY OBJECTS -->
+            <div class="sub-panel collapsed" id="sp-dso">
+                <div class="sub-panel-header" onclick="toggleSubPanel('sp-dso')">
+                    <span class="sp-title">Deep Sky Objects</span>
+                    <span class="sp-arrow">▼</span>
+                </div>
+                <div class="sub-panel-body">
+                    <div class="control-group" style="font-size: 0.9rem;">
+                        <label class="overlay-row"><input type="checkbox" id="chk-dso"> Show DSO Labels</label>
+                    </div>
+                    <div class="control-group">
+                        <label style="font-size: 0.8rem; color: #aaa; margin-bottom: 4px;">Catalogs</label>
+                        <div class="dso-type-row">
+                            <label><input type="checkbox" id="chk-dso-m" checked> Messier</label>
+                            <label><input type="checkbox" id="chk-dso-ngc"> NGC</label>
+                            <label><input type="checkbox" id="chk-dso-ic" checked> IC</label>
+                            <label><input type="checkbox" id="chk-dso-ldn" checked> LDN/B</label>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label style="font-size: 0.8rem; color: #aaa; margin-bottom: 4px;">Object Types</label>
+                        <div class="dso-type-row">
+                            <label><input type="checkbox" id="chk-dso-galaxies" checked> Galaxies</label>
+                            <label><input type="checkbox" id="chk-dso-nebulae" checked> Nebulae</label>
+                            <label><input type="checkbox" id="chk-dso-dark" checked> Dark Neb.</label>
+                            <label><input type="checkbox" id="chk-dso-globular" checked> Glob. Cl.</label>
+                            <label><input type="checkbox" id="chk-dso-open" checked> Open Cl.</label>
+                            <label><input type="checkbox" id="chk-dso-planetary" checked> Plan. Neb.</label>
+                        </div>
+                    </div>
+                    <div class="compact-slider">
+                        <div class="cs-header">
+                            <label>DSO Magnitude Limit</label>
+                            <span id="dso-mag-val" class="val-display" style="color: #fff;">12.0</span>
+                        </div>
+                        <input type="range" id="dso-mag-slider" min="1" max="16" step="0.5" value="12" oninput="document.getElementById('dso-mag-val').innerText=parseFloat(this.value).toFixed(1)">
+                    </div>
+                    <div style="font-size: 0.9rem;">
+                        <label class="overlay-row"><input type="checkbox" id="chk-dso-nullmag"> Unknown magnitude</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DISCOVER (Telescopius) -->
+            <div class="sub-panel collapsed" id="sp-discover">
+                <div class="sub-panel-header" onclick="toggleSubPanel('sp-discover')">
+                    <span class="sp-title">Discover</span>
+                    <span class="sp-arrow">▼</span>
+                </div>
+                <div class="sub-panel-body">
+                    <!-- Shown only when Telescopius is not configured -->
+                    <div id="discover-not-configured-notice" style="display:none;padding:14px 10px;text-align:center;color:#94a3b8;font-size:0.82rem;line-height:1.5">
+                        Telescopius API key not configured.<br>
+                        <a href="/settings" style="color:var(--accent);text-decoration:none;">Set it in Settings →</a>
+                    </div>
+
+                    <!-- All Discover controls; hidden when Telescopius is not configured -->
+                    <div id="discover-telescopius-content">
+                    <!-- Solar system times -->
+                    <div id="solar-times-container" class="solar-times-bar">
+                        <span class="discover-loading" id="solar-times-loading">Load solar data…</span>
+                    </div>
+
+                    <!-- Tonight's Highlights -->
+                    <div class="discover-section">
+                        <div class="discover-section-label">Tonight's Highlights</div>
+                        <div class="filter-chips" id="highlight-chips">
+                            <span class="filter-chip active" data-filter="all">All</span>
+                            <span class="filter-chip" data-filter="gxy">Galaxies</span>
+                            <span class="filter-chip" data-filter="eneb,rneb,dneb,neb,snr,sfr,h2r">Nebulae</span>
+                            <span class="filter-chip" data-filter="glcl">Glob. Cl.</span>
+                            <span class="filter-chip" data-filter="opcl,stcl">Clusters</span>
+                            <span class="filter-chip" data-filter="pneb">Plan. Neb.</span>
+                        </div>
+                        <div id="highlights-list" class="discover-results">
+                            <div class="discover-empty">Click below to load highlights</div>
+                        </div>
+                        <button class="action-btn" id="load-highlights-btn" style="margin-top: 6px;" onclick="loadHighlights(true)">Refresh Highlights</button>
+                    </div>
+
+                    <!-- Search -->
+                    <div class="discover-section">
+                        <div class="discover-section-label">Search Targets</div>
+                        <div class="flex-row" style="margin-bottom: 6px;">
+                            <input type="text" id="telescopius-search-input" placeholder="e.g. Andromeda, NGC 7000…" style="flex: 1;">
+                            <button class="action-btn" id="telescopius-search-btn" style="flex: 0; padding: 8px 10px;" onclick="telescopiusSearch()">🔍</button>
+                        </div>
+                        <div class="flex-row" style="margin-bottom: 6px; gap: 4px;">
+                            <select id="ts-type-filter" style="flex: 1; font-size: 0.82rem; padding: 5px;">
+                                <option value="">All Types</option>
+                                <option value="galaxy">Galaxies</option>
+                                <option value="eneb,rneb,snr,sfr">Nebulae</option>
+                                <option value="gc">Globular Clusters</option>
+                                <option value="oc">Open Clusters</option>
+                                <option value="pn">Planetary Nebulae</option>
+                            </select>
+                            <select id="ts-sort" style="flex: 1; font-size: 0.82rem; padding: 5px;">
+                                <option value="">Default order</option>
+                                <option value="mag">By Magnitude</option>
+                            </select>
+                        </div>
+                        <div id="search-results-list" class="discover-results"></div>
+                    </div>
+
+                    <!-- Telescopius Lists -->
+                    <div class="discover-section">
+                        <div class="discover-section-label">My Telescopius Lists</div>
+                        <div class="tl-import-row">
+                            <select id="telescopius-lists-select" style="flex: 1;">
+                                <option value="">— Load lists —</option>
+                            </select>
+                            <button class="action-btn" style="padding: 6px 10px;" onclick="loadTelescopiusLists(true)" title="Refresh lists from Telescopius API">↻</button>
+                        </div>
+                        <div id="telescopius-list-targets" class="discover-results"></div>
+                        <button class="action-btn" id="import-list-btn" style="margin-top: 6px; background: #2ecc71; display: none;" onclick="importTelescopiusListToFavorites()">Import to Favorites</button>
+                    </div>
+                    </div><!-- /discover-telescopius-content -->
+                </div>
+            </div>
+
+            <!-- SETTINGS -->
+            <div class="sub-panel collapsed" id="sp-settings">
+                <div class="sub-panel-header" onclick="toggleSubPanel('sp-settings')">
+                    <span class="sp-title">Settings</span>
+                    <span class="sp-arrow">▼</span>
+                </div>
+                <div class="sub-panel-body">
+                    <!-- Location is managed in Settings page; hidden inputs preserved for internal use -->
+                    <input type="hidden" id="input-lat" value="51.50">
+                    <input type="hidden" id="input-lon" value="-0.12">
+                    <div class="control-group" style="margin-top:0">
+                        <label style="font-size: 0.8rem; color: #aaa;">Sky Survey</label>
+                        <select id="survey-select">
+                            <optgroup label="Optical">
+                                <option value="P/DSS2/color" selected>DSS2 Color</option>
+                                <option value="P/DSS2/red">DSS2 Red</option>
+                                <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS DR1</option>
+                                <option value="P/SDSS9/color">SDSS9 Color</option>
+                                <option value="P/Mellinger/color">Mellinger Color (wide-field)</option>
+                                <option value="P/DECaPS/DR2/color">DECaPS DR2 Color</option>
+                                <option value="P/DESI-Legacy-Surveys/DR10/color">DESI Legacy DR10</option>
+                            </optgroup>
+                            <optgroup label="H-Alpha / Emission">
+                                <option value="P/VTSS/Ha">VTSS H-alpha</option>
+                                <option value="P/Fink/Halpha">Fink H-alpha</option>
+                                <option value="P/SHASSA/H">SHASSA H-alpha</option>
+                            </optgroup>
+                            <optgroup label="Infrared">
+                                <option value="P/2MASS/color">2MASS Color</option>
+                                <option value="P/allWISE/color">AllWISE Color</option>
+                                <option value="P/AKARI/FIS/Color">AKARI Far-IR</option>
+                            </optgroup>
+                            <optgroup label="UV / X-Ray / Gamma">
+                                <option value="P/GALEXGR6/AIS/color">GALEX UV</option>
+                                <option value="P/XMM/PN/color">XMM-Newton X-ray</option>
+                                <option value="P/Fermi/color">Fermi Gamma-ray</option>
+                                <option value="P/ROSAT/intensity">ROSAT X-ray</option>
+                            </optgroup>
+                            <optgroup label="Radio">
+                                <option value="P/NVSS/intensity">NVSS 1.4 GHz</option>
+                                <option value="P/GLEAM/170-231">GLEAM 170-231 MHz</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="compact-slider">
+                        <div class="cs-header">
+                            <label>Background Brightness</label>
+                        </div>
+                        <input type="range" id="brightness-slider" min="0.2" max="4" step="0.1" value="1">
+                    </div>
+
+                </div>
+            </div>
+
+            <div id="data-status" style="font-size: 0.75rem; color: var(--accent); margin-top: 10px; text-align: center;"></div>
+
+            <div style="text-align:center;padding:16px 0 8px;color:#475569;font-size:0.6rem;letter-spacing:0.3px">© 2026 Giancarlo Erra</div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    // ===== CORE STATE =====
+    let aladin = null;
+    let appMode = 'framing';
+    let activeFov = [2.13, 1.2];
+    let activeFovName = '';
+    let obsLat = 51.50, obsLon = -0.12;
+    let isTimeNow = true;
+    let manualTime = new Date();
+
+    let currentStarsOpacity = 0.8;
+    let currentConstOpacity = 0.5;
+    let gridOverlayOpacity = 0.85;
+    let eqGridOpacity = 0.60;
+
+    // FOV lock: when locked, FOV tracks a fixed RA/Dec position
+    let fovLocked = false;
+    let fovLockedRaDec = null;
+
+    // Telescopius key availability (set in A.init.then; read by MutationObserver IIFE)
+    let telescopiusAvailable = false;
+
+    // Mosaic state
+    let mosaicActive = false;
+    let mosaicCols = 2;
+    let mosaicRows = 2;
+    let mosaicOverlap = 10;
+    let mosaicTileEls = [];
+
+    // Server-backed FOVs & favorites
+    let fovList = [
+        { id: 1, name: 'Default Wide', width: 2.13, height: 1.2 },
+        { id: 2, name: 'Default Narrow', width: 1.21, height: 0.91 }
+    ];
+    let favList = [];
+    let activeFovId = 1;
+
+    const API_BASE = window.location.origin;
+
+    // ===== AUTH CHECK =====
+    fetch(API_BASE + '/api/auth/check', { credentials: 'include' })
+      .then(r => { if (!r.ok) window.location.href = '/login'; })
+      .catch(() => window.location.href = '/login');
+
+    // ===== SHARED LOCATION (server → localStorage fallback) =====
+    async function loadSharedLocation() {
+      try {
+        const r = await fetch(API_BASE + '/api/location', { credentials: 'include' });
+        if (r.ok) {
+          const loc = await r.json();
+          if (loc.lat != null && loc.lon != null) {
+            obsLat = loc.lat;
+            obsLon = loc.lon;
+            const latEl = document.getElementById('input-lat');
+            const lonEl = document.getElementById('input-lon');
+            if (latEl) latEl.value = obsLat.toFixed(4);
+            if (lonEl) lonEl.value = obsLon.toFixed(4);
+          }
+        }
+      } catch (_) {}
+    }
+
+    function pushLocationToServer() {
+      fetch(API_BASE + '/api/location', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ lat: obsLat, lon: obsLon })
+      }).catch(() => {});
+    }
+
+    const cardinalsData = [
+        { id: 'lbl-n', az: 0, alt: 2, text: 'N' }, { id: 'lbl-ne', az: 45, alt: 2, text: 'NE' },
+        { id: 'lbl-e', az: 90, alt: 2, text: 'E' }, { id: 'lbl-se', az: 135, alt: 2, text: 'SE' },
+        { id: 'lbl-s', az: 180, alt: 2, text: 'S' }, { id: 'lbl-sw', az: 225, alt: 2, text: 'SW' },
+        { id: 'lbl-w', az: 270, alt: 2, text: 'W' }, { id: 'lbl-nw', az: 315, alt: 2, text: 'NW' },
+        { id: 'lbl-z', az: 0, alt: 89.9, text: 'ZENITH' }
+    ];
+
+    // ===== CELESTIAL DATA =====
+    let celestialDataLoaded = false;
+    let allStars = [];
+    let starsByBin = [];
+    let constellationLines = [];
+    let constellationCenters = [];
+
+    const STAR_BINS = [
+        { minMag: -2,   maxMag: 0.5,  size: 18, color: '#ffffff' },
+        { minMag: 0.5,  maxMag: 1.5,  size: 13, color: '#ffffff' },
+        { minMag: 1.5,  maxMag: 2.5,  size: 9,  color: '#f4f4ff' },
+        { minMag: 2.5,  maxMag: 3.5,  size: 6,  color: '#e8e8f4' },
+        { minMag: 3.5,  maxMag: 4.5,  size: 4,  color: '#d8d8ea' },
+        { minMag: 4.5,  maxMag: 5.5,  size: 2.5, color: '#c0c0d8' },
+        { minMag: 5.5,  maxMag: 6.5,  size: 1.5, color: '#a0a0b8' },
+        { minMag: 6.5,  maxMag: 7.5,  size: 1,   color: '#808098' },
+        { minMag: 7.5,  maxMag: 8.5,  size: 0.8,  color: '#606078' },
+        { minMag: 8.5,  maxMag: 9.5,  size: 0.6,  color: '#505068' },
+        { minMag: 9.5,  maxMag: 10.5, size: 0.4,  color: '#404058' },
+    ];
+
+    let constLabelEls = [];
+    let starLabelEls = [];
+    let moonMarkerEl = null;
+    let planetMarkerEls = {};
+
+    // DSO data
+    let allDSOs = [];
+    let dsoLabelEls = [];
+
+    const DSO_TYPE_GROUPS = {
+        galaxies: ['g', 'e', 's', 's0', 'sd', 'i', 'gg'],
+        nebulae: ['bn', 'en', 'rn', 'sfr', 'snr'],
+        dark: ['dn'],
+        globular: ['gc'],
+        open: ['oc'],
+        planetary: ['pn']
+    };
+
+    function dsoTypeClass(type) {
+        if (['g','e','s','s0','sd','i','gg'].includes(type)) return 'dso-gx';
+        if (['bn','en','rn','sfr','snr'].includes(type)) return 'dso-nb';
+        if (type === 'dn') return 'dso-dn';
+        if (type === 'gc') return 'dso-gc';
+        if (type === 'oc') return 'dso-oc';
+        if (type === 'pn') return 'dso-pn';
+        return 'dso-gx';
+    }
+
+    function getDSOCatalogs(id, desig) {
+        let text = (id || '') + ';' + (desig || '');
+        let cats = [];
+        if (/\bM\s?\d/i.test(text)) cats.push('m');
+        if (/\bNGC\s?\d/i.test(text)) cats.push('ngc');
+        if (/\bIC\s?\d/i.test(text)) cats.push('ic');
+        if (/\bLDN\s?\d/i.test(text) || /\bB\s\d/i.test(text)) cats.push('ldn');
+        return cats;
+    }
+
+    function getDSOLabel(id, desig) {
+        let d = (desig || id || '');
+        let m = d.match(/\b(M\s?\d+)\b/i);
+        if (m) return m[1];
+        let ngc = d.match(/\b(NGC\s?\d+)\b/i);
+        if (ngc) return ngc[1];
+        let ic = d.match(/\b(IC\s?\d+)\b/i);
+        if (ic) return ic[1];
+        let ldn = d.match(/\b(LDN\s?\d+)\b/i);
+        if (ldn) return ldn[1];
+        let barn = d.match(/\b(B\s\d+)\b/i);
+        if (barn) return barn[1];
+        return d.split(';')[0].trim() || id;
+    }
+
+    function getDSOTypeGroup(type) {
+        for (let [group, types] of Object.entries(DSO_TYPE_GROUPS)) {
+            if (types.includes(type)) return group;
+        }
+        return null;
+    }
+
+    // ===== SERVER API (Upstash Redis via Express) =====
+    async function loadFovsFromServer() {
+        try {
+            let resp = await fetch(API_BASE + '/api/skychart/fovs');
+            if (resp.ok) {
+                let data = await resp.json();
+                if (Array.isArray(data) && data.length > 0) fovList = data;
+            }
+        } catch(e) { console.warn('Failed to load FOVs from server:', e); }
+        renderFovList();
+        selectFov(activeFovId);
+    }
+
+    async function saveFovsToServer() {
+        try {
+            await fetch(API_BASE + '/api/skychart/fovs', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(fovList)
+            });
+        } catch(e) { console.warn('Failed to save FOVs:', e); }
+    }
+
+    async function loadFavoritesFromServer() {
+        try {
+            let resp = await fetch(API_BASE + '/api/skychart/favorites');
+            if (resp.ok) {
+                let data = await resp.json();
+                if (Array.isArray(data)) favList = data;
+            }
+        } catch(e) { console.warn('Failed to load favorites from server:', e); }
+        renderFavList();
+    }
+
+    async function saveFavoritesToServer() {
+        try {
+            await fetch(API_BASE + '/api/skychart/favorites', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(favList)
+            });
+        } catch(e) { console.warn('Failed to save favorites:', e); }
+    }
+
+    // ===== FOV LIST MANAGEMENT =====
+    function renderFovList() {
+        let ul = document.getElementById('fov-list');
+        ul.innerHTML = '';
+        fovList.forEach(f => {
+            let li = document.createElement('li');
+            li.className = f.id === activeFovId ? 'active' : '';
+            li.innerHTML = `<span style="color:#eee; flex: 1; overflow:hidden; text-overflow:ellipsis;">${f.name}</span>
+                <span class="fov-dims">${f.width}° × ${f.height}°</span>
+                <button class="item-del-btn" data-id="${f.id}" title="Delete">✕</button>`;
+            li.addEventListener('click', (e) => {
+                if (e.target.classList.contains('item-del-btn')) return;
+                selectFov(f.id);
+            });
+            li.querySelector('.item-del-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteFov(f.id);
+            });
+            ul.appendChild(li);
+        });
+    }
+
+    function selectFov(id) {
+        let fov = fovList.find(f => f.id === id);
+        if (!fov && fovList.length > 0) fov = fovList[0];
+        if (!fov) return;
+        activeFovId = fov.id;
+        activeFov = [fov.width, fov.height];
+        activeFovName = fov.name;
+        document.getElementById('fov-name-text').textContent = fov.name;
+        renderFovList();
+        debouncedSave();
+    }
+
+    function addFov() {
+        let nameEl = document.getElementById('fov-add-name');
+        let wEl = document.getElementById('fov-add-w');
+        let hEl = document.getElementById('fov-add-h');
+        let name = nameEl.value.trim();
+        let w = parseFloat(wEl.value);
+        let h = parseFloat(hEl.value);
+        if (!name || isNaN(w) || isNaN(h) || w <= 0 || h <= 0) return;
+        let maxId = fovList.reduce((m, f) => Math.max(m, f.id), 0);
+        let newFov = { id: maxId + 1, name, width: w, height: h };
+        fovList.push(newFov);
+        nameEl.value = ''; wEl.value = ''; hEl.value = '';
+        selectFov(newFov.id);
+        saveFovsToServer();
+    }
+
+    function deleteFov(id) {
+        fovList = fovList.filter(f => f.id !== id);
+        if (activeFovId === id) {
+            selectFov(fovList.length > 0 ? fovList[0].id : -1);
+        }
+        renderFovList();
+        saveFovsToServer();
+    }
+
+    // ===== FAVORITES LIST MANAGEMENT =====
+    function formatRA(ra) {
+        let hrs = ra / 15;
+        let h = Math.floor(hrs);
+        let rest = (hrs - h) * 60;
+        let m = Math.floor(rest);
+        let s = ((rest - m) * 60).toFixed(1);
+        return h.toString().padStart(2,'0') + 'h ' + m.toString().padStart(2,'0') + 'm ' + s.padStart(4,'0') + 's';
+    }
+    function formatDec(dec) {
+        let sign = dec < 0 ? '-' : '+';
+        let abs = Math.abs(dec);
+        let d = Math.floor(abs);
+        let rest = (abs - d) * 60;
+        let m = Math.floor(rest);
+        let s = ((rest - m) * 60).toFixed(0);
+        return sign + d.toString().padStart(2,'0') + '° ' + m.toString().padStart(2,'0') + "' " + s.padStart(2,'0') + '"';
+    }
+
+    function renderFavList() {
+        let ul = document.getElementById('fav-list');
+        ul.innerHTML = '';
+        favList.forEach(f => {
+            let li = document.createElement('li');
+            let mosaicBadge = f.mosaic ? `<span style="margin-left:4px;padding:1px 5px;background:rgba(180,100,255,0.25);border:1px solid rgba(180,100,255,0.6);border-radius:3px;font-size:0.6rem;color:#d090ff;vertical-align:middle;">${f.mosaic.cols}×${f.mosaic.rows}</span>` : '';
+            li.innerHTML = `<span style="color:#eee; flex: 1; overflow:hidden; text-overflow:ellipsis;">${f.name}${mosaicBadge}</span>
+                <span class="fav-coords">${formatRA(f.ra)} ${formatDec(f.dec)} r${f.rotation}°</span>
+                <button class="item-del-btn" data-id="${f.id}" title="Delete">✕</button>`;
+            li.addEventListener('click', (e) => {
+                if (e.target.classList.contains('item-del-btn')) return;
+                goToFavorite(f);
+            });
+            li.querySelector('.item-del-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteFavorite(f.id);
+            });
+            ul.appendChild(li);
+        });
+    }
+
+    function addFavorite() {
+        let nameEl = document.getElementById('fav-add-name');
+        let name = nameEl.value.trim();
+        if (!name || !aladin) return;
+        let center = aladin.getRaDec();
+        if (!center) return;
+        let rotation = parseFloat(document.getElementById('rotation-slider').value) || 0;
+        let maxId = favList.reduce((m, f) => Math.max(m, f.id), 0);
+        let fov = aladin.getFov();
+        let viewFov = Array.isArray(fov) ? fov[0] : fov;
+        favList.push({
+            id: maxId + 1,
+            name,
+            ra: Math.round(center[0] * 10000) / 10000,
+            dec: Math.round(center[1] * 10000) / 10000,
+            rotation,
+            fov: Math.round(viewFov * 100) / 100,
+            ...(mosaicActive ? { mosaic: { cols: mosaicCols, rows: mosaicRows, overlap: mosaicOverlap } } : {})
+        });
+        nameEl.value = '';
+        renderFavList();
+        saveFavoritesToServer();
+    }
+
+    function deleteFavorite(id) {
+        favList = favList.filter(f => f.id !== id);
+        renderFavList();
+        saveFavoritesToServer();
+    }
+
+    function goToFavorite(fav) {
+        if (!aladin) return;
+        aladin.gotoRaDec(fav.ra, fav.dec);
+        if (fav.fov) aladin.setFov(fav.fov);
+        if (fav.rotation != null) {
+            document.getElementById('rotation-slider').value = fav.rotation;
+            document.getElementById('rotation-val').innerText = fav.rotation + '°';
+        }
+        if (fav.mosaic) {
+            mosaicCols = fav.mosaic.cols;
+            mosaicRows = fav.mosaic.rows;
+            mosaicOverlap = fav.mosaic.overlap;
+            mosaicActive = true;
+            document.getElementById('mosaic-enabled').checked = true;
+            document.getElementById('mosaic-cols').value = mosaicCols;
+            document.getElementById('mosaic-rows').value = mosaicRows;
+            document.getElementById('mosaic-overlap').value = mosaicOverlap;
+            document.getElementById('mosaic-controls').style.display = '';
+            updateMosaicInfo();
+            renderMosaicTiles();
+        } else {
+            // Reset mosaic when navigating to a non-mosaic favourite
+            mosaicActive = false;
+            document.getElementById('mosaic-enabled').checked = false;
+            document.getElementById('mosaic-controls').style.display = 'none';
+            renderMosaicTiles();
+        }
+        debouncedSave();
+    }
+
+    // ===== SETTINGS PERSISTENCE (localStorage) =====
+    const SETTINGS_KEY = 'astro-sky-dashboard-v1';
+
+    function saveSettings() {
+        if (!aladin) return;
+        try {
+            let center = aladin.getRaDec();
+            let fov = aladin.getFov();
+            let s = {
+                mode: appMode,
+                survey: document.getElementById('survey-select').value,
+                mount: document.getElementById('mount-select').value,
+                activeFovId: activeFovId,
+                rotation: document.getElementById('rotation-slider').value,
+                lat: document.getElementById('input-lat').value,
+                lon: document.getElementById('input-lon').value,
+                chkHorizon: document.getElementById('chk-horizon').checked,
+                chkDarkenGround: document.getElementById('chk-darken-ground').checked,
+                chkGrid: document.getElementById('chk-grid').checked,
+                gridOpacity: document.getElementById('grid-opacity-slider').value,
+                chkEqGrid: document.getElementById('chk-eq-grid').checked,
+                chkConst: document.getElementById('chk-constellations').checked,
+                chkConstLabels: document.getElementById('chk-const-labels').checked,
+                chkStars: document.getElementById('chk-stars').checked,
+                chkStarLabels: document.getElementById('chk-star-labels').checked,
+                chkMoon: document.getElementById('chk-moon').checked,
+                chkPlanets: document.getElementById('chk-planets').checked,
+                chkNightMode: document.getElementById('chk-nightmode').checked,
+                chkDSO: document.getElementById('chk-dso').checked,
+                chkDsoM: document.getElementById('chk-dso-m').checked,
+                chkDsoNGC: document.getElementById('chk-dso-ngc').checked,
+                chkDsoIC: document.getElementById('chk-dso-ic').checked,
+                chkDsoLDN: document.getElementById('chk-dso-ldn').checked,
+                chkDsoGalaxies: document.getElementById('chk-dso-galaxies').checked,
+                chkDsoNebulae: document.getElementById('chk-dso-nebulae').checked,
+                chkDsoDark: document.getElementById('chk-dso-dark').checked,
+                chkDsoGlobular: document.getElementById('chk-dso-globular').checked,
+                chkDsoOpen: document.getElementById('chk-dso-open').checked,
+                chkDsoPlanetary: document.getElementById('chk-dso-planetary').checked,
+                chkDsoNullMag: document.getElementById('chk-dso-nullmag').checked,
+                dsoMagSlider: document.getElementById('dso-mag-slider').value,
+                magSlider: document.getElementById('mag-slider').value,
+                nameMagSlider: document.getElementById('name-mag-slider').value,
+                constOpacity: document.getElementById('const-opacity-slider').value,
+                starsOpacity: document.getElementById('stars-opacity-slider').value,
+                brightness: document.getElementById('brightness-slider').value,
+                fovLocked: fovLocked,
+                fovLockedRaDec: fovLockedRaDec,
+                mosaicActive: mosaicActive,
+                mosaicCols: mosaicCols,
+                mosaicRows: mosaicRows,
+                mosaicOverlap: mosaicOverlap,
+                panelStates: ['sp-camera','sp-favorites','sp-time','sp-horizon','sp-overlays','sp-density','sp-dso','sp-discover','sp-settings'].reduce(function(o, id) { var el = document.getElementById(id); if (el) o[id] = !el.classList.contains('collapsed'); return o; }, {}),
+                centerRA: center ? center[0] : null,
+                centerDec: center ? center[1] : null,
+                viewFov: Array.isArray(fov) ? fov[0] : fov
+            };
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+        } catch(e) {}
+    }
+
+    function loadAndApplySettings() {
+        try {
+            let s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+            if (!s) return;
+
+            // Dropdowns
+            if (s.survey) { document.getElementById('survey-select').value = s.survey; aladin.setImageSurvey(s.survey); }
+            if (s.mount) document.getElementById('mount-select').value = s.mount;
+            if (s.activeFovId) { activeFovId = s.activeFovId; }
+
+            // Sliders
+            if (s.rotation != null) { document.getElementById('rotation-slider').value = s.rotation; document.getElementById('rotation-val').innerText = s.rotation + '°'; }
+            if (s.magSlider != null) { document.getElementById('mag-slider').value = s.magSlider; document.getElementById('mag-limit-val').innerText = parseFloat(s.magSlider).toFixed(1); }
+            if (s.nameMagSlider != null) { document.getElementById('name-mag-slider').value = s.nameMagSlider; document.getElementById('name-mag-val').innerText = parseFloat(s.nameMagSlider).toFixed(1); }
+            if (s.constOpacity != null) { document.getElementById('const-opacity-slider').value = s.constOpacity; document.getElementById('const-opacity-val').innerText = s.constOpacity + '%'; currentConstOpacity = s.constOpacity / 100; }
+            if (s.starsOpacity != null) { document.getElementById('stars-opacity-slider').value = s.starsOpacity; document.getElementById('stars-opacity-val').innerText = s.starsOpacity + '%'; currentStarsOpacity = s.starsOpacity / 100; }
+            if (s.brightness != null) { document.getElementById('brightness-slider').value = s.brightness; document.getElementById('aladin-lite-div').style.filter = `brightness(${s.brightness})`; }
+
+            // Location
+            if (s.lat != null) { document.getElementById('input-lat').value = s.lat; obsLat = parseFloat(s.lat); }
+            if (s.lon != null) { document.getElementById('input-lon').value = s.lon; obsLon = parseFloat(s.lon); }
+
+            // Checkboxes
+            if (s.chkHorizon != null) document.getElementById('chk-horizon').checked = s.chkHorizon;
+            if (s.chkDarkenGround != null) document.getElementById('chk-darken-ground').checked = s.chkDarkenGround;
+            if (s.chkGrid != null) document.getElementById('chk-grid').checked = s.chkGrid;
+            if (s.gridOpacity != null) { document.getElementById('grid-opacity-slider').value = s.gridOpacity; document.getElementById('grid-opacity-val').innerText = s.gridOpacity + '%'; gridOverlayOpacity = eqGridOpacity = s.gridOpacity / 100; }
+            if (s.chkEqGrid != null) document.getElementById('chk-eq-grid').checked = s.chkEqGrid;
+            if (s.chkConst != null) document.getElementById('chk-constellations').checked = s.chkConst;
+            if (s.chkConstLabels != null) document.getElementById('chk-const-labels').checked = s.chkConstLabels;
+            if (s.chkStars != null) document.getElementById('chk-stars').checked = s.chkStars;
+            if (s.chkStarLabels != null) document.getElementById('chk-star-labels').checked = s.chkStarLabels;
+            if (s.chkMoon != null) document.getElementById('chk-moon').checked = s.chkMoon;
+            if (s.chkPlanets != null) document.getElementById('chk-planets').checked = s.chkPlanets;
+            if (s.chkNightMode != null) {
+                document.getElementById('chk-nightmode').checked = s.chkNightMode;
+                document.getElementById('night-mode-overlay').style.display = s.chkNightMode ? 'block' : 'none';
+            }
+            if (s.chkDSO != null) document.getElementById('chk-dso').checked = s.chkDSO;
+            if (s.chkDsoM != null) document.getElementById('chk-dso-m').checked = s.chkDsoM;
+            if (s.chkDsoNGC != null) document.getElementById('chk-dso-ngc').checked = s.chkDsoNGC;
+            if (s.chkDsoIC != null) document.getElementById('chk-dso-ic').checked = s.chkDsoIC;
+            if (s.chkDsoLDN != null) document.getElementById('chk-dso-ldn').checked = s.chkDsoLDN;
+            if (s.chkDsoGalaxies != null) document.getElementById('chk-dso-galaxies').checked = s.chkDsoGalaxies;
+            if (s.chkDsoNebulae != null) document.getElementById('chk-dso-nebulae').checked = s.chkDsoNebulae;
+            if (s.chkDsoDark != null) document.getElementById('chk-dso-dark').checked = s.chkDsoDark;
+            if (s.chkDsoGlobular != null) document.getElementById('chk-dso-globular').checked = s.chkDsoGlobular;
+            if (s.chkDsoOpen != null) document.getElementById('chk-dso-open').checked = s.chkDsoOpen;
+            if (s.chkDsoPlanetary != null) document.getElementById('chk-dso-planetary').checked = s.chkDsoPlanetary;
+            if (s.chkDsoNullMag != null) document.getElementById('chk-dso-nullmag').checked = s.chkDsoNullMag;
+            if (s.dsoMagSlider != null) { document.getElementById('dso-mag-slider').value = s.dsoMagSlider; document.getElementById('dso-mag-val').innerText = parseFloat(s.dsoMagSlider).toFixed(1); }
+
+            // Sub-panel collapsed states
+            if (s.panelStates) {
+                Object.keys(s.panelStates).forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (el) el.classList.toggle('collapsed', !s.panelStates[id]);
+                });
+            }
+
+            // FOV lock state
+            if (s.fovLocked) {
+                fovLocked = true;
+                fovLockedRaDec = s.fovLockedRaDec || null;
+                document.getElementById('camera-fov-box').classList.add('fov-locked');
+                document.getElementById('fov-lock-icon').innerHTML = '<svg viewBox="0 0 24 24"><path d="M18 10h-1V7A5 5 0 0 0 7 7v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2zM9 7a3 3 0 0 1 6 0v3H9V7zm4 10.5a1.5 1.5 0 0 1-3 0v-3a1.5 1.5 0 0 1 3 0v3z"/></svg>';
+            }
+
+            // Mosaic state
+            if (s.mosaicActive != null) {
+                mosaicActive = s.mosaicActive;
+                mosaicCols = s.mosaicCols || 2;
+                mosaicRows = s.mosaicRows || 2;
+                mosaicOverlap = s.mosaicOverlap != null ? s.mosaicOverlap : 10;
+                document.getElementById('mosaic-enabled').checked = mosaicActive;
+                document.getElementById('mosaic-cols').value = mosaicCols;
+                document.getElementById('mosaic-rows').value = mosaicRows;
+                document.getElementById('mosaic-overlap').value = mosaicOverlap;
+                document.getElementById('mosaic-controls').style.display = mosaicActive ? '' : 'none';
+                updateMosaicInfo();
+            }
+
+            // Aladin view
+            if (s.centerRA != null && s.centerDec != null) aladin.gotoRaDec(s.centerRA, s.centerDec);
+            if (s.viewFov) aladin.setFov(s.viewFov);
+
+            // Mode
+            if (s.mode) setAppMode(s.mode);
+        } catch(e) { console.warn('Settings restore error:', e); }
+    }
+
+    let saveTimer = null;
+    function debouncedSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveSettings, 600); }
+
+    // ===== ASTRONOMY MATH =====
+    function getObsTime() { return isTimeNow ? new Date() : manualTime; }
+    function getJD(date) { return (date.getTime() / 86400000.0) + 2440587.5; }
+
+    function getLST(jd, lon) {
+        let T = (jd - 2451545.0) / 36525.0;
+        let gmst = 280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.000387933 * T * T;
+        let lst = (gmst + lon) % 360;
+        while (lst < 0) lst += 360;
+        return lst;
+    }
+
+    function altAzToRaDec(alt, az, lat, lst) {
+        let rad = Math.PI / 180;
+        let a = alt * rad, A = az * rad, phi = lat * rad;
+        let sinDec = Math.sin(a)*Math.sin(phi) + Math.cos(a)*Math.cos(phi)*Math.cos(A);
+        sinDec = Math.max(-1, Math.min(1, sinDec));
+        let dec = Math.asin(sinDec);
+        let cosH = (Math.sin(a)*Math.cos(phi) - Math.cos(a)*Math.sin(phi)*Math.cos(A)) / Math.cos(dec);
+        let sinH = (-Math.cos(a)*Math.sin(A)) / Math.cos(dec);
+        let H = Math.atan2(sinH, cosH);
+        let ra = ((lst * rad - H) / rad) % 360;
+        if (ra < 0) ra += 360;
+        return [ra, dec / rad];
+    }
+
+    function raDecToAltAz(ra, dec, lat, lst) {
+        let rad = Math.PI / 180;
+        let H = (lst - ra) * rad, phi = lat * rad, d = dec * rad;
+        let sinAlt = Math.sin(d)*Math.sin(phi) + Math.cos(d)*Math.cos(phi)*Math.cos(H);
+        sinAlt = Math.max(-1, Math.min(1, sinAlt));
+        let alt = Math.asin(sinAlt);
+        let cosAz = (Math.sin(d) - Math.sin(alt)*Math.sin(phi)) / (Math.cos(alt)*Math.cos(phi));
+        cosAz = Math.max(-1, Math.min(1, cosAz));
+        let az = Math.acos(cosAz);
+        if (Math.sin(H) > 0) az = 2*Math.PI - az;
+        return [alt / rad, az / rad];
+    }
+
+    function getParallacticAngle(ra, dec, lat, lst) {
+        let rad = Math.PI / 180;
+        let H = (lst - ra) * rad, phi = lat * rad, d = dec * rad;
+        return Math.atan2(Math.sin(H), Math.tan(phi) * Math.cos(d) - Math.sin(d) * Math.cos(H)) / rad;
+    }
+
+    function getViewRotation() {
+        try {
+            let center = aladin.getRaDec();
+            if (!center || center.length < 2) return 0;
+            let pC = aladin.world2pix(center[0], center[1]);
+            if (!pC || isNaN(pC[0])) return 0;
+            let testDec = Math.min(89.5, center[1] + 0.5);
+            let pN = aladin.world2pix(center[0], testDec);
+            if (!pN || isNaN(pN[0])) return 0;
+            return Math.atan2(pN[0] - pC[0], pC[1] - pN[1]) * 180 / Math.PI;
+        } catch(e) { return 0; }
+    }
+
+    // ===== PLANET POSITIONS (simplified VSOP87 / Meeus) =====
+    const PLANETS = {
+        Mercury: { color: '#b0b0b0', L: [252.2509, 149474.0722], e: [0.20563, 0.000], i: [7.005, 0], Om: [48.331, 0], w: [77.456, 0], a: 0.38710 },
+        Venus:   { color: '#ffe8a0', L: [181.9798, 58519.2130], e: [0.00677, 0.000], i: [3.3947, 0], Om: [76.680, 0], w: [131.534, 0], a: 0.72333 },
+        Mars:    { color: '#ff6644', L: [355.4330, 19141.6964], e: [0.09340, 0.000], i: [1.8497, 0], Om: [49.558, 0], w: [336.060, 0], a: 1.52368 },
+        Jupiter: { color: '#ffcc88', L: [34.3515, 3036.3027], e: [0.04839, 0.000], i: [1.3033, 0], Om: [100.464, 0], w: [14.331, 0], a: 5.20260 },
+        Saturn:  { color: '#ffe4a0', L: [50.0774, 1223.5110], e: [0.05415, 0.000], i: [2.4889, 0], Om: [113.666, 0], w: [93.057, 0], a: 9.55491 },
+        Uranus:  { color: '#99ddff', L: [314.0550, 429.8640], e: [0.04717, 0.000], i: [0.7732, 0], Om: [74.006, 0], w: [173.005, 0], a: 19.2184 },
+        Neptune: { color: '#5588ff', L: [304.8800, 218.4862], e: [0.00859, 0.000], i: [1.7700, 0], Om: [131.784, 0], w: [48.120, 0], a: 30.1104 }
+    };
+
+    function getPlanetPosition(name, jd) {
+        let T = (jd - 2451545.0) / 36525.0;
+        let rad = Math.PI / 180;
+        let p = PLANETS[name];
+
+        // Mean elements
+        let L = (p.L[0] + p.L[1] * T) % 360; if (L < 0) L += 360;
+        let e = p.e[0] + p.e[1] * T;
+        let i = (p.i[0] + p.i[1] * T) * rad;
+        let Om = (p.Om[0] + p.Om[1] * T) * rad;
+        let wBar = (p.w[0] + p.w[1] * T) * rad;
+        let a = p.a;
+
+        // Mean anomaly
+        let M = (L - p.w[0] - p.w[1] * T) * rad;
+        M = M % (2 * Math.PI); if (M < 0) M += 2 * Math.PI;
+
+        // Solve Kepler's equation (Newton's method)
+        let E = M;
+        for (let iter = 0; iter < 10; iter++) {
+            E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+        }
+
+        // True anomaly
+        let v = 2 * Math.atan2(Math.sqrt(1+e) * Math.sin(E/2), Math.sqrt(1-e) * Math.cos(E/2));
+        let r = a * (1 - e * Math.cos(E));
+
+        // Argument of perihelion (omega = wBar - Om)
+        let w = wBar - Om;
+
+        // Heliocentric ecliptic coordinates
+        let xh = r * (Math.cos(Om)*Math.cos(v+w) - Math.sin(Om)*Math.sin(v+w)*Math.cos(i));
+        let yh = r * (Math.sin(Om)*Math.cos(v+w) + Math.cos(Om)*Math.sin(v+w)*Math.cos(i));
+        let zh = r * Math.sin(v+w) * Math.sin(i);
+
+        // Earth's position (simplified)
+        let Le = (100.4664 + 36000.7698 * T) % 360; if (Le < 0) Le += 360;
+        let Me = (357.5291 + 35999.0503 * T) * rad;
+        let Ce = (1.9146 * Math.sin(Me) + 0.0200 * Math.sin(2*Me)) * rad;
+        let ve = Me + Ce;
+        let re = 1.00014 - 0.01671 * Math.cos(Me) - 0.00014 * Math.cos(2*Me);
+        let lonE = (Le * rad + Ce);
+        let xe = re * Math.cos(lonE);
+        let ye = re * Math.sin(lonE);
+
+        // Geocentric ecliptic
+        let xg = xh - xe;
+        let yg = yh - ye;
+        let zg = zh;
+
+        // Ecliptic to equatorial
+        let eps = (23.4393 - 0.0130 * T) * rad;
+        let xeq = xg;
+        let yeq = yg * Math.cos(eps) - zg * Math.sin(eps);
+        let zeq = yg * Math.sin(eps) + zg * Math.cos(eps);
+
+        let raP = Math.atan2(yeq, xeq) / rad;
+        if (raP < 0) raP += 360;
+        let decP = Math.asin(zeq / Math.sqrt(xeq*xeq + yeq*yeq + zeq*zeq)) / rad;
+
+        return { ra: raP, dec: decP };
+    }
+
+    // ===== MOON POSITION & PHASE (simplified Meeus) =====
+    function getMoonInfo(jd) {
+        let T = (jd - 2451545.0) / 36525.0;
+        let rad = Math.PI / 180;
+
+        // Mean elements (degrees)
+        let L0 = (218.3165 + 481267.8813 * T) % 360; if (L0 < 0) L0 += 360;
+        let M  = (134.9634 + 477198.8676 * T) % 360;
+        let F  = (93.2721  + 483202.0175 * T) % 360;
+        let D  = (297.8502 + 445267.1115 * T) % 360;
+        let Ms = (357.5291 + 35999.0503  * T) % 360;
+
+        // Longitude corrections
+        let dL = 6.289 * Math.sin(M * rad)
+               + 1.274 * Math.sin((2*D - M) * rad)
+               + 0.658 * Math.sin(2*D * rad)
+               + 0.214 * Math.sin(2*M * rad)
+               - 0.186 * Math.sin(Ms * rad)
+               - 0.114 * Math.sin(2*F * rad);
+
+        let dB = 5.128 * Math.sin(F * rad)
+               + 0.281 * Math.sin((M + F) * rad)
+               + 0.278 * Math.sin((M - F) * rad);
+
+        let moonLon = (L0 + dL) % 360; if (moonLon < 0) moonLon += 360;
+        let moonLat = dB;
+
+        // Ecliptic to equatorial
+        let eps = (23.4393 - 0.0130 * T) * rad;
+        let lonR = moonLon * rad, latR = moonLat * rad;
+
+        let ra = Math.atan2(
+            Math.sin(lonR) * Math.cos(eps) - Math.tan(latR) * Math.sin(eps),
+            Math.cos(lonR)
+        ) / rad;
+        if (ra < 0) ra += 360;
+
+        let dec = Math.asin(
+            Math.sin(latR) * Math.cos(eps) + Math.cos(latR) * Math.sin(eps) * Math.sin(lonR)
+        ) / rad;
+
+        // Sun longitude for phase
+        let sunLon = (280.466 + 36000.770 * T + 1.915 * Math.sin(Ms * rad) + 0.020 * Math.sin(2 * Ms * rad)) % 360;
+        if (sunLon < 0) sunLon += 360;
+
+        // Moon age (0–29.53 synodic days)
+        let age = ((moonLon - sunLon + 360) % 360) / 360 * 29.53;
+
+        // Illumination fraction
+        let illum = (1 - Math.cos(((moonLon - sunLon + 360) % 360) * rad)) / 2;
+
+        // Phase emoji
+        let emoji;
+        if      (age < 1.85)  emoji = '🌑';
+        else if (age < 5.53)  emoji = '🌒';
+        else if (age < 9.22)  emoji = '🌓';
+        else if (age < 12.91) emoji = '🌔';
+        else if (age < 16.61) emoji = '🌕';
+        else if (age < 20.30) emoji = '🌖';
+        else if (age < 23.99) emoji = '🌗';
+        else if (age < 27.68) emoji = '🌘';
+        else                   emoji = '🌑';
+
+        return { ra, dec, illum, emoji };
+    }
+
+    // ===== ALADIN INITIALIZATION =====
+    A.init.then(async () => {
+        // 1. Health check — redirect home if DB is unavailable
+        try {
+            const healthResp = await fetch(`${API_BASE}/api/health`);
+            const health = await healthResp.json();
+            if (!health.ok) { window.location.href = '/'; return; }
+        } catch(e) {
+            window.location.href = '/';
+            return;
+        }
+
+        // 2. Check Telescopius key availability (non-blocking)
+        telescopiusAvailable = false;
+        try {
+            const keyResp = await fetch(`${API_BASE}/api/skychart/telescopius/key-status`);
+            const keyData = await keyResp.json();
+            telescopiusAvailable = keyData.configured === true;
+        } catch(_) {}
+        if (!telescopiusAvailable) {
+            applyTelescopiusNotConfiguredState();
+        }
+
+        aladin = A.aladin('#aladin-lite-div', {
+            survey: 'P/DSS2/color', fov: 10, target: 'M 42',
+            projection: 'STG',
+            showReticle: false, showZoomControl: false, showFullscreenControl: false, showLayersControl: false
+        });
+
+        // Create cardinal labels
+        let container = document.getElementById('labels-container');
+        cardinalsData.forEach(c => {
+            let el = document.createElement('div');
+            el.id = c.id;
+            el.className = 'cardinal-label' + (c.id === 'lbl-z' ? ' zenith-label' : '');
+            el.innerText = c.text;
+            container.appendChild(el);
+        });
+
+        // Create moon marker element
+        moonMarkerEl = document.createElement('div');
+        moonMarkerEl.className = 'moon-marker';
+        moonMarkerEl.innerHTML = '<span class="moon-emoji"></span><span class="moon-info"></span>';
+        container.appendChild(moonMarkerEl);
+
+        // Create planet marker elements
+        Object.keys(PLANETS).forEach(name => {
+            let el = document.createElement('div');
+            el.className = 'planet-marker';
+            el.innerHTML = `<span class="planet-dot" style="color:${PLANETS[name].color}; background:${PLANETS[name].color}"></span><span class="planet-name" style="color:${PLANETS[name].color}">${name}</span>`;
+            container.appendChild(el);
+            planetMarkerEls[name] = el;
+        });
+
+        // Restore saved settings BEFORE loading data
+        loadAndApplySettings();
+
+        // Load shared location from server (overrides localStorage defaults)
+        loadSharedLocation();
+
+        // Load FOVs & favorites from server
+        loadFovsFromServer();
+        loadFavoritesFromServer();
+
+        // Load external celestial data
+        loadCelestialData();
+
+        // Hook auto-save to panel interactions + Aladin view changes
+        document.getElementById('panel-content').addEventListener('input', debouncedSave);
+        document.getElementById('panel-content').addEventListener('change', debouncedSave);
+        try { aladin.on('positionChanged', debouncedSave); } catch(e) {}
+        try { aladin.on('zoomChanged', debouncedSave); } catch(e) {}
+        window.addEventListener('beforeunload', saveSettings);
+
+        requestAnimationFrame(syncUI);
+        setInterval(clockTick, 1000);
+
+        // --- Dampen pinch/wheel zoom to make it smoother ---
+        let aladinDiv = document.getElementById('aladin-lite-div');
+        const ZOOM_DAMPING = 0.1; // 0–1: lower = slower zoom per gesture
+
+        // Intercept wheel events and apply dampened zoom
+        aladinDiv.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            let f = aladin.getFov();
+            let currentFov = Array.isArray(f) ? f[0] : f;
+            let delta = Math.sign(e.deltaY) * ZOOM_DAMPING;
+            let factor = 1 + delta * 0.15;
+            aladin.setFov(currentFov * factor);
+        }, { capture: true, passive: false });
+
+        // Intercept pinch-to-zoom touch events
+        let lastPinchDist = null;
+        aladinDiv.addEventListener('touchstart', function(e) {
+            if (e.touches.length === 2) {
+                let dx = e.touches[0].clientX - e.touches[1].clientX;
+                let dy = e.touches[0].clientY - e.touches[1].clientY;
+                lastPinchDist = Math.hypot(dx, dy);
+            }
+        }, { capture: true, passive: true });
+
+        aladinDiv.addEventListener('touchmove', function(e) {
+            if (e.touches.length === 2 && lastPinchDist !== null) {
+                e.preventDefault();
+                e.stopPropagation();
+                let dx = e.touches[0].clientX - e.touches[1].clientX;
+                let dy = e.touches[0].clientY - e.touches[1].clientY;
+                let dist = Math.hypot(dx, dy);
+                let ratio = dist / lastPinchDist;
+                // Dampen: move ratio closer to 1
+                let dampedRatio = 1 + (ratio - 1) * ZOOM_DAMPING;
+                let f = aladin.getFov();
+                let currentFov = Array.isArray(f) ? f[0] : f;
+                aladin.setFov(currentFov / dampedRatio);
+                lastPinchDist = dist;
+            }
+        }, { capture: true, passive: false });
+
+        aladinDiv.addEventListener('touchend', function(e) {
+            if (e.touches.length < 2) lastPinchDist = null;
+        }, { capture: true, passive: true });
+    });
+
+    // ===== LOAD CELESTIAL DATA =====
+    async function loadCelestialData() {
+        let statusEl = document.getElementById('data-status');
+        statusEl.textContent = 'Loading star & constellation data...';
+        statusEl.style.color = '#888';
+
+        try {
+            const BASE = '/data/celestial/';
+            const [starsResp, starNamesResp, linesResp, constNamesResp, dsosResp] = await Promise.all([
+                fetch(BASE + 'stars.14.json'),
+                fetch(BASE + 'starnames.json'),
+                fetch(BASE + 'constellations.lines.json'),
+                fetch(BASE + 'constellations.json'),
+                fetch(BASE + 'dsos.14.json')
+            ]);
+            if (!starsResp.ok || !starNamesResp.ok || !linesResp.ok || !constNamesResp.ok)
+                throw new Error('HTTP fetch failed');
+
+            const starsGeo = await starsResp.json();
+            const starNamesMap = await starNamesResp.json();
+            const linesGeo = await linesResp.json();
+            const constNamesGeo = await constNamesResp.json();
+            const dsosGeo = dsosResp.ok ? await dsosResp.json() : { features: [] };
+
+            function lon2ra(lon) { return lon < 0 ? lon + 360 : lon; }
+
+            function resolveStarName(hipId) {
+                let entry = starNamesMap[hipId] || starNamesMap[String(hipId)];
+                if (!entry) return { name: '', desig: '' };
+                if (typeof entry === 'string') return { name: entry, desig: '' };
+                if (typeof entry === 'object') return {
+                    name: entry.name || '',
+                    desig: entry.desig || entry.bayer || ''
+                };
+                return { name: '', desig: '' };
+            }
+
+            allStars = starsGeo.features
+                .filter(f => f.geometry && f.geometry.coordinates && typeof f.properties.mag === 'number' && f.properties.mag < 10.5)
+                .map(f => {
+                    let names = resolveStarName(f.id);
+                    return {
+                        hip: f.id,
+                        ra:  lon2ra(f.geometry.coordinates[0]),
+                        dec: f.geometry.coordinates[1],
+                        mag: f.properties.mag,
+                        name: names.name,
+                        desig: names.desig
+                    };
+                })
+                .sort((a, b) => a.mag - b.mag);
+
+            starsByBin = STAR_BINS.map(bin =>
+                allStars.filter(s => s.mag >= bin.minMag && s.mag < bin.maxMag)
+            );
+
+            let namedCount = allStars.filter(s => s.name).length;
+
+            constellationLines = linesGeo.features
+                .filter(f => f.geometry && f.geometry.type === 'MultiLineString')
+                .map(f => ({
+                    id: f.id,
+                    segments: f.geometry.coordinates.map(ls =>
+                        ls.map(c => [lon2ra(c[0]), c[1]])
+                    )
+                }));
+
+            constellationCenters = constNamesGeo.features
+                .filter(f => f.geometry && f.properties && f.properties.name)
+                .map(f => ({
+                    id: f.id,
+                    name: f.properties.name,
+                    ra: lon2ra(f.geometry.coordinates[0]),
+                    dec: f.geometry.coordinates[1]
+                }));
+
+            // Process DSO data
+            // Dark nebulae (dn) "mag" is actually Lynds opacity class (1-6), not astronomical magnitude.
+            // Some nebulae also have mag "1" as a placeholder. Treat both cases as unknown.
+            const DN_TYPES = new Set(['dn']);
+            const NEBULA_TYPES = new Set(['bn','en','rn','sfr','snr']);
+
+            allDSOs = dsosGeo.features
+                .filter(f => f.geometry && f.geometry.coordinates)
+                .map(f => {
+                    let p = f.properties || {};
+                    let rawMag = p.mag;
+                    let type = p.type || '';
+                    let mag = null;
+                    if (rawMag != null && rawMag !== '' && Number(rawMag) !== 999) {
+                        if (DN_TYPES.has(type)) {
+                            mag = null; // opacity class, not magnitude
+                        } else if (NEBULA_TYPES.has(type) && Number(rawMag) === 1) {
+                            mag = null; // placeholder
+                        } else {
+                            mag = parseFloat(rawMag);
+                            if (isNaN(mag)) mag = null;
+                        }
+                    }
+                    return {
+                        id: f.id,
+                        ra: lon2ra(f.geometry.coordinates[0]),
+                        dec: f.geometry.coordinates[1],
+                        mag: mag,
+                        type: type,
+                        name: p.name || '',
+                        desig: p.desig || f.id || '',
+                        label: getDSOLabel(f.id, p.desig),
+                        catalogs: getDSOCatalogs(f.id, p.desig),
+                        typeGroup: getDSOTypeGroup(p.type || '')
+                    };
+                })
+                .filter(d => d.catalogs.length > 0);
+
+            celestialDataLoaded = true;
+            statusEl.textContent = `${allStars.length} stars, ${constellationLines.length} const., ${allDSOs.length} DSOs`;
+            statusEl.style.color = 'var(--accent)';
+            console.log(`Loaded: ${allStars.length} stars (${namedCount} named), ${constellationLines.length} constellations`);
+
+            buildLabels();
+
+        } catch(e) {
+            console.error('Failed to load celestial data:', e);
+            statusEl.textContent = 'Failed to load data — check internet connection';
+            statusEl.style.color = '#ff4444';
+        }
+    }
+
+    // ===== DOM LABELS =====
+    function buildLabels() {
+        let container = document.getElementById('labels-container');
+
+        constellationCenters.forEach(c => {
+            let el = document.createElement('div');
+            el.className = 'sky-label constellation-label';
+            el.innerText = c.name;
+            container.appendChild(el);
+            constLabelEls.push({ el, ra: c.ra, dec: c.dec });
+        });
+
+        let labelableStars = allStars.filter(s => s.name && s.name.length > 0);
+        let desigStars = allStars.filter(s => !s.name && s.desig && s.desig.length > 0 && s.mag < 6);
+
+        [...labelableStars, ...desigStars].forEach(s => {
+            let el = document.createElement('div');
+            el.className = 'sky-label star-label';
+            el.innerText = s.name || s.desig;
+            container.appendChild(el);
+            starLabelEls.push({ el, ra: s.ra, dec: s.dec, mag: s.mag });
+        });
+
+        // DSO labels
+        allDSOs.forEach(d => {
+            let el = document.createElement('div');
+            el.className = 'sky-label dso-label ' + dsoTypeClass(d.type);
+            el.innerText = d.label;
+            if (d.name) el.title = d.name;
+            container.appendChild(el);
+            dsoLabelEls.push({ el, ra: d.ra, dec: d.dec, mag: d.mag, type: d.type, catalogs: d.catalogs, typeGroup: d.typeGroup });
+        });
+
+        console.log(`Labels: ${constLabelEls.length} constellation, ${starLabelEls.length} star, ${dsoLabelEls.length} DSO`);
+    }
+
+    function positionLabel(el, ra, dec, size, offsetX, offsetY) {
+        try {
+            let pix = aladin.world2pix(ra, dec);
+            if (pix && !isNaN(pix[0]) && pix[0] >= -80 && pix[0] <= size[0] + 80
+                                       && pix[1] >= -40 && pix[1] <= size[1] + 40) {
+                el.style.transform = `translate(${pix[0] + (offsetX||0)}px, ${pix[1] + (offsetY||0)}px)`;
+                el.style.display = 'block';
+                return true;
+            }
+        } catch(e) {}
+        el.style.display = 'none';
+        return false;
+    }
+
+    // ===== CANVAS OVERLAY DRAWING =====
+    function drawOverlayCanvas() {
+        let canvas = document.getElementById('overlay-canvas');
+        if (!canvas || !aladin) return;
+        let ctx = canvas.getContext('2d');
+        let size = aladin.getSize();
+        let W = size[0], H = size[1];
+
+        if (canvas.width !== W || canvas.height !== H) {
+            canvas.width = W;
+            canvas.height = H;
+        }
+        ctx.clearRect(0, 0, W, H);
+
+        // --- Darken canvas (above HTML labels, cleared every frame) ---
+        let dCanvas = document.getElementById('darken-canvas');
+        let dCtx = dCanvas.getContext('2d');
+        if (dCanvas.width !== W || dCanvas.height !== H) { dCanvas.width = W; dCanvas.height = H; }
+        dCtx.clearRect(0, 0, W, H);
+
+        // --- Alt-Az Grid (sky chart mode) ---
+        if (appMode === 'skychart') {
+            let lst = getLST(getJD(getObsTime()), obsLon);
+
+            let gop = gridOverlayOpacity;
+
+            if (document.getElementById('chk-grid').checked) {
+                let gridAlts = [30, 60];
+                ctx.strokeStyle = `rgba(170,68,255,${gop})`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let alt of gridAlts) {
+                    let prev = null;
+                    for (let az = 0; az <= 360; az += 4) {
+                        let [ra, dec] = altAzToRaDec(alt, az % 360, obsLat, lst);
+                        let p = safeW2P(ra, dec);
+                        if (p && prev && pixDist(p, prev) < W * 0.4) {
+                            ctx.moveTo(prev[0], prev[1]);
+                            ctx.lineTo(p[0], p[1]);
+                        }
+                        prev = p;
+                    }
+                }
+                for (let az = 0; az < 360; az += 45) {
+                    let prev = null;
+                    for (let alt = 0; alt <= 88; alt += 3) {
+                        let [ra, dec] = altAzToRaDec(alt, az, obsLat, lst);
+                        let p = safeW2P(ra, dec);
+                        if (p && prev && pixDist(p, prev) < W * 0.4) {
+                            ctx.moveTo(prev[0], prev[1]);
+                            ctx.lineTo(p[0], p[1]);
+                        }
+                        prev = p;
+                    }
+                }
+                ctx.stroke();
+
+                // --- Altitude edge labels (left & right end of each horizontal ring) ---
+                let labelAlpha = Math.min(1, gop + 0.15);
+                ctx.fillStyle = `rgba(200,150,255,${labelAlpha})`;
+                ctx.font = 'bold 10px Inter, ui-sans-serif, sans-serif';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'rgba(0,0,0,0.9)';
+                ctx.shadowBlur = 4;
+                for (let alt of gridAlts) {
+                    let leftPt = null, rightPt = null;
+                    let leftX = Infinity, rightX = -Infinity;
+                    for (let az = 0; az <= 360; az++) {
+                        let [ra, dec] = altAzToRaDec(alt, az % 360, obsLat, lst);
+                        let p = safeW2P(ra, dec);
+                        if (!p) continue;
+                        if (p[0] >= 4 && p[0] <= W - 4 && p[1] >= 4 && p[1] <= H - 4) {
+                            if (p[0] < leftX) { leftX = p[0]; leftPt = [p[0], p[1]]; }
+                            if (p[0] > rightX) { rightX = p[0]; rightPt = [p[0], p[1]]; }
+                        }
+                    }
+                    if (leftPt) {
+                        ctx.textAlign = 'left';
+                        ctx.fillText(alt + '°', leftPt[0] + 3, leftPt[1]);
+                    }
+                    if (rightPt && rightX > leftX + 20) {
+                        ctx.textAlign = 'right';
+                        ctx.fillText(alt + '°', rightPt[0] - 3, rightPt[1]);
+                    }
+                }
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // --- Equatorial Grid (RA/Dec) — always drawn regardless of sky/framing mode ---
+        if (document.getElementById('chk-eq-grid').checked) {
+            let eqColor = '#00ccaa';
+            // Parse hex colour to r,g,b
+            let er = parseInt(eqColor.substr(1,2),16);
+            let eg = parseInt(eqColor.substr(3,2),16);
+            let eb = parseInt(eqColor.substr(5,2),16);
+            let eop = eqGridOpacity;
+
+            ctx.strokeStyle = `rgba(${er},${eg},${eb},${eop})`;
+            ctx.lineWidth = 0.8;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+
+            // RA lines every 30° (2 h) — sweep dec from −80° to +80°
+            for (let ra = 0; ra < 360; ra += 30) {
+                let prev = null;
+                for (let dec = -80; dec <= 80; dec += 2) {
+                    let p = safeW2P(ra, dec);
+                    if (p && prev && pixDist(p, prev) < W * 0.4) {
+                        ctx.moveTo(prev[0], prev[1]);
+                        ctx.lineTo(p[0], p[1]);
+                    }
+                    prev = p;
+                }
+            }
+
+            // Dec lines every 30° — sweep ra from 0° to 360°
+            for (let dec = -60; dec <= 60; dec += 30) {
+                let prev = null;
+                for (let ra = 0; ra <= 360; ra += 2) {
+                    let p = safeW2P(ra % 360, dec);
+                    if (p && prev && pixDist(p, prev) < W * 0.4) {
+                        ctx.moveTo(prev[0], prev[1]);
+                        ctx.lineTo(p[0], p[1]);
+                    }
+                    prev = p;
+                }
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Dec edge labels (left & right of each Dec parallel on screen)
+            let eqLabelAlpha = Math.min(1, eop + 0.2);
+            ctx.fillStyle = `rgba(${er},${eg},${eb},${eqLabelAlpha})`;
+            ctx.font = 'bold 9px Inter, ui-sans-serif, sans-serif';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0,0,0,0.9)';
+            ctx.shadowBlur = 3;
+            for (let dec = -60; dec <= 60; dec += 30) {
+                if (dec === 0) continue; // celestial equator — skip, obvious
+                let leftPt = null, rightPt = null;
+                let leftX = Infinity, rightX = -Infinity;
+                for (let ra = 0; ra <= 360; ra++) {
+                    let p = safeW2P(ra % 360, dec);
+                    if (!p) continue;
+                    if (p[0] >= 4 && p[0] <= W - 4 && p[1] >= 4 && p[1] <= H - 4) {
+                        if (p[0] < leftX)  { leftX  = p[0]; leftPt  = [p[0], p[1]]; }
+                        if (p[0] > rightX) { rightX = p[0]; rightPt = [p[0], p[1]]; }
+                    }
+                }
+                let sign = dec > 0 ? '+' : '';
+                if (leftPt) { ctx.textAlign = 'left';  ctx.fillText(sign + dec + '°', leftPt[0]  + 3, leftPt[1]);  }
+                if (rightPt && rightX > leftX + 20) { ctx.textAlign = 'right'; ctx.fillText(sign + dec + '°', rightPt[0] - 3, rightPt[1]); }
+            }
+
+            // Celestial equator label
+            {
+                let leftPt = null, rightPt = null;
+                let leftX = Infinity, rightX = -Infinity;
+                for (let ra = 0; ra <= 360; ra++) {
+                    let p = safeW2P(ra % 360, 0);
+                    if (!p) continue;
+                    if (p[0] >= 4 && p[0] <= W - 4 && p[1] >= 4 && p[1] <= H - 4) {
+                        if (p[0] < leftX)  { leftX  = p[0]; leftPt  = [p[0], p[1]]; }
+                        if (p[0] > rightX) { rightX = p[0]; rightPt = [p[0], p[1]]; }
+                    }
+                }
+                ctx.font = 'bold 9px Inter, ui-sans-serif, sans-serif';
+                if (leftPt)  { ctx.textAlign = 'left';  ctx.fillText('EQ 0°', leftPt[0]  + 3, leftPt[1]);  }
+                if (rightPt && rightX > leftX + 20) { ctx.textAlign = 'right'; ctx.fillText('EQ 0°', rightPt[0] - 3, rightPt[1]); }
+            }
+            ctx.shadowBlur = 0;
+        }
+
+        if (!celestialDataLoaded) return;
+
+        // --- Constellation Lines ---
+        if (document.getElementById('chk-constellations').checked) {
+            ctx.strokeStyle = `rgba(80, 150, 255, ${currentConstOpacity.toFixed(2)})`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            constellationLines.forEach(cl => {
+                cl.segments.forEach(seg => {
+                    for (let i = 0; i < seg.length - 1; i++) {
+                        let ra1 = seg[i][0], dec1 = seg[i][1];
+                        let ra2 = seg[i+1][0], dec2 = seg[i+1][1];
+                        if (Math.abs(ra1 - ra2) > 180) continue;
+                        let p1 = safeW2P(ra1, dec1);
+                        let p2 = safeW2P(ra2, dec2);
+                        if (!p1 || !p2) continue;
+                        if ((p1[0]<-50 && p2[0]<-50) || (p1[0]>W+50 && p2[0]>W+50)) continue;
+                        if ((p1[1]<-50 && p2[1]<-50) || (p1[1]>H+50 && p2[1]>H+50)) continue;
+                        ctx.moveTo(p1[0], p1[1]);
+                        ctx.lineTo(p2[0], p2[1]);
+                    }
+                });
+            });
+            ctx.stroke();
+        }
+
+        // --- Stars ---
+        if (document.getElementById('chk-stars').checked) {
+            let magLimit = parseFloat(document.getElementById('mag-slider').value);
+            let opacity = currentStarsOpacity;
+
+            for (let bi = 0; bi < STAR_BINS.length; bi++) {
+                let bin = STAR_BINS[bi];
+                if (bin.minMag > magLimit) break;
+
+                let r = parseInt(bin.color.substr(1,2), 16);
+                let g = parseInt(bin.color.substr(3,2), 16);
+                let b = parseInt(bin.color.substr(5,2), 16);
+                ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${opacity.toFixed(2)})`;
+
+                let stars = starsByBin[bi];
+                let dotSize = bin.size;
+                let half = dotSize / 2;
+
+                if (dotSize <= 1.5) {
+                    let px = Math.max(1, Math.round(dotSize));
+                    for (let j = 0; j < stars.length; j++) {
+                        let s = stars[j];
+                        if (s.mag > magLimit) break;
+                        let p = safeW2P(s.ra, s.dec);
+                        if (!p || p[0] < -2 || p[0] > W+2 || p[1] < -2 || p[1] > H+2) continue;
+                        ctx.fillRect(p[0] | 0, p[1] | 0, px, px);
+                    }
+                } else {
+                    for (let j = 0; j < stars.length; j++) {
+                        let s = stars[j];
+                        if (s.mag > magLimit) break;
+                        let p = safeW2P(s.ra, s.dec);
+                        if (!p || p[0] < -half || p[0] > W+half || p[1] < -half || p[1] > H+half) continue;
+                        ctx.beginPath();
+                        ctx.arc(p[0], p[1], half, 0, 6.2832);
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        // --- Darken below horizon + horizon line (drawn on high-z canvas so it covers HTML labels too) ---
+        if (appMode === 'skychart') {
+            let lst = getLST(getJD(getObsTime()), obsLon);
+
+            if (document.getElementById('chk-darken-ground').checked) {
+                try {
+                    const stepX = 8;
+                    const cols = Math.ceil(W / stepX) + 1;
+                    let topY = new Float32Array(cols);
+
+                    for (let xi = 0; xi < cols; xi++) {
+                        let x = Math.min(xi * stepX, W);
+                        let getAlt = (y) => {
+                            let rd = aladin.pix2world(x, y);
+                            if (!rd || isNaN(rd[0])) return null;
+                            return raDecToAltAz(rd[0], rd[1], obsLat, lst)[0];
+                        };
+                        let altTop = getAlt(0), altBot = getAlt(H - 1);
+                        if (altTop === null || altBot === null) { topY[xi] = H; continue; }
+                        if (altTop >= 0 && altBot >= 0) { topY[xi] = H; continue; }
+                        if (altTop < 0  && altBot < 0)  { topY[xi] = 0; continue; }
+                        if (altTop < 0  && altBot >= 0) { topY[xi] = H; continue; } // inverted — skip
+                        let lo = 0, hi = H - 1, loAlt = altTop;
+                        for (let iter = 0; iter < 6; iter++) {
+                            let mid = (lo + hi) * 0.5;
+                            let altMid = getAlt(mid);
+                            if (altMid === null) break;
+                            if ((altMid >= 0) === (loAlt >= 0)) { lo = mid; loAlt = altMid; }
+                            else hi = mid;
+                        }
+                        topY[xi] = (lo + hi) * 0.5;
+                    }
+
+                    dCtx.save();
+                    dCtx.fillStyle = 'rgba(0,0,0,0.5)';
+                    dCtx.beginPath();
+                    dCtx.moveTo(0, topY[0]);
+                    for (let xi = 1; xi < cols; xi++) {
+                        dCtx.lineTo(Math.min(xi * stepX, W), topY[xi]);
+                    }
+                    dCtx.lineTo(W, H);
+                    dCtx.lineTo(0, H);
+                    dCtx.closePath();
+                    dCtx.fill();
+                    dCtx.restore();
+                } catch(e) { /* pix2world unavailable — skip */ }
+            }
+
+            if (document.getElementById('chk-horizon').checked) {
+                let gop = gridOverlayOpacity;
+                dCtx.strokeStyle = `rgba(255,51,51,${gop})`;
+                dCtx.lineWidth = 4;
+                dCtx.setLineDash([]);
+                dCtx.beginPath();
+                let prev = null;
+                for (let az = 0; az <= 360; az += 2) {
+                    let [ra, dec] = altAzToRaDec(0, az % 360, obsLat, lst);
+                    let p = safeW2P(ra, dec);
+                    if (p && prev && pixDist(p, prev) < W * 0.4) {
+                        dCtx.moveTo(prev[0], prev[1]);
+                        dCtx.lineTo(p[0], p[1]);
+                    }
+                    prev = p;
+                }
+                dCtx.stroke();
+            }
+        }
+    }
+
+    function safeW2P(ra, dec) {
+        try {
+            let p = aladin.world2pix(ra, dec);
+            if (p && !isNaN(p[0])) return p;
+        } catch(e) {}
+        return null;
+    }
+    function pixDist(a, b) {
+        let dx = a[0]-b[0], dy = a[1]-b[1];
+        return Math.sqrt(dx*dx + dy*dy);
+    }
+
+    // ===== MAIN UI SYNC LOOP =====
+    // ===== MOSAIC =====
+    function updateMosaicInfo() {
+        let el = document.getElementById('mosaic-info');
+        if (el) {
+            let panels = mosaicCols * mosaicRows;
+            el.textContent = `${mosaicCols}\xd7${mosaicRows}, ${mosaicOverlap}% overlap \u2014 ${panels} panel${panels !== 1 ? 's' : ''}`;
+        }
+    }
+
+    /** Rebuild the mosaic tile DOM elements inside #fov-overlay. */
+    function renderMosaicTiles() {
+        mosaicTileEls.forEach(el => el.remove());
+        mosaicTileEls = [];
+        if (!mosaicActive) return;
+        let fovOverlay = document.getElementById('fov-overlay');
+        for (let r = 0; r < mosaicRows; r++) {
+            for (let c = 0; c < mosaicCols; c++) {
+                let tile = document.createElement('div');
+                tile.className = 'mosaic-tile';
+                let num = document.createElement('span');
+                num.className = 'mosaic-num';
+                num.textContent = String(r * mosaicCols + c + 1);
+                tile.appendChild(num);
+                fovOverlay.appendChild(tile);
+                mosaicTileEls.push(tile);
+            }
+        }
+    }
+
+    /** Position and size every mosaic tile each animation frame. */
+    function updateMosaicTiles(tileW, tileH, finalAngle, visible) {
+        if (!mosaicActive || mosaicTileEls.length === 0) return;
+        let angleRad = finalAngle * Math.PI / 180;
+        let stepX = tileW * (1 - mosaicOverlap / 100);
+        let stepY = tileH * (1 - mosaicOverlap / 100);
+        let idx = 0;
+        for (let r = 0; r < mosaicRows; r++) {
+            for (let c = 0; c < mosaicCols; c++) {
+                let tile = mosaicTileEls[idx];
+                if (!tile) { idx++; continue; }
+                if (!visible) { tile.style.display = 'none'; idx++; continue; }
+                // Grid offset in camera-local space (centred on 0,0)
+                let gx = (c - (mosaicCols - 1) / 2) * stepX;
+                let gy = (r - (mosaicRows - 1) / 2) * stepY;
+                // Rotate offset to screen space
+                let sx = gx * Math.cos(angleRad) - gy * Math.sin(angleRad);
+                let sy = gx * Math.sin(angleRad) + gy * Math.cos(angleRad);
+                tile.style.width  = tileW + 'px';
+                tile.style.height = tileH + 'px';
+                tile.style.left   = sx + 'px';
+                tile.style.top    = sy + 'px';
+                tile.style.transform = `translate(-50%,-50%) rotate(${finalAngle}deg)`;
+                tile.style.display = '';
+                idx++;
+            }
+        }
+    }
+
+    // ===== SYNCED UI =====
+    function syncUI() {
+        requestAnimationFrame(syncUI);
+        if (!aladin) return;
+
+        let radec = aladin.getRaDec();
+        let lst = getLST(getJD(getObsTime()), obsLon);
+        let size = aladin.getSize();
+
+        // RA/Dec readout
+        if (radec && radec.length >= 2) {
+            let hrs = radec[0] / 15, h = Math.floor(hrs), m = Math.floor((hrs - h) * 60),
+                s = ((hrs - h - m/60) * 3600).toFixed(0);
+            document.getElementById('ra-val').innerText =
+                `${h.toString().padStart(2,'0')}h ${m.toString().padStart(2,'0')}m ${s.padStart(2,'0')}s`;
+            let sign = radec[1] < 0 ? '-' : '+', abs = Math.abs(radec[1]),
+                d = Math.floor(abs), dm = Math.floor((abs - d) * 60),
+                ds = ((abs - d - dm/60) * 3600).toFixed(0);
+            document.getElementById('dec-val').innerText =
+                `${sign}${d.toString().padStart(2,'0')}° ${dm.toString().padStart(2,'0')}' ${ds.padStart(2,'0')}"`;
+        }
+
+        // Camera FOV box — with view rotation correction
+        let fov = aladin.getFov();
+        let scale = size[0] / (Array.isArray(fov) ? fov[0] : fov);
+        let box = document.getElementById('camera-fov-box');
+        let fovOverlay = document.getElementById('fov-overlay');
+        box.style.width = (activeFov[0] * scale) + 'px';
+        box.style.height = (activeFov[1] * scale) + 'px';
+
+        // Track whether the FOV centre is on screen (used by mosaic too)
+        let fovVisible = true;
+
+        // Position FOV: locked tracks RA/Dec, unlocked stays at screen center
+        if (fovLocked && fovLockedRaDec) {
+            let pix = aladin.world2pix(fovLockedRaDec[0], fovLockedRaDec[1]);
+            if (pix && pix[0] >= -300 && pix[0] <= size[0]+300 && pix[1] >= -300 && pix[1] <= size[1]+300) {
+                fovOverlay.style.left = pix[0] + 'px';
+                fovOverlay.style.top = pix[1] + 'px';
+                if (!mosaicActive) box.style.display = '';
+            } else {
+                fovVisible = false;
+                box.style.display = 'none';
+            }
+        } else {
+            fovOverlay.style.left = '50%';
+            fovOverlay.style.top = '50%';
+            if (!mosaicActive) box.style.display = '';
+        }
+
+        let userAngle = parseFloat(document.getElementById('rotation-slider').value);
+        let viewRot = getViewRotation();
+        let finalAngle;
+
+        if (document.getElementById('mount-select').value === 'eq') {
+            finalAngle = userAngle + viewRot;
+        } else {
+            let pa = 0;
+            if (radec && radec.length >= 2) {
+                pa = getParallacticAngle(radec[0], radec[1], obsLat, lst);
+            }
+            finalAngle = userAngle + viewRot - pa;
+        }
+        box.style.transform = `translate(-50%, -50%) rotate(${finalAngle}deg)`;
+
+        // Mosaic: hide single box and draw tiled grid instead
+        if (mosaicActive) {
+            box.style.display = 'none';
+            updateMosaicTiles(activeFov[0] * scale, activeFov[1] * scale, finalAngle, fovVisible);
+        }
+
+        // Cardinal labels (Sky Chart mode only)
+        if (appMode === 'skychart') {
+            cardinalsData.forEach(c => {
+                let el = document.getElementById(c.id);
+                let [ra, dec] = altAzToRaDec(c.alt, c.az, obsLat, lst);
+                if (!positionLabel(el, ra, dec, size, -el.offsetWidth/2, -el.offsetHeight/2)) {
+                    el.style.display = 'none';
+                } else {
+                    el.style.opacity = gridOverlayOpacity;
+                }
+            });
+        } else {
+            cardinalsData.forEach(c => {
+                let el = document.getElementById(c.id);
+                if (el) el.style.display = 'none';
+            });
+        }
+
+        // Constellation name labels
+        if (celestialDataLoaded) {
+            let showCL = document.getElementById('chk-const-labels').checked;
+            constLabelEls.forEach(lbl => {
+                if (showCL) {
+                    if (positionLabel(lbl.el, lbl.ra, lbl.dec, size, 0, 0)) {
+                        lbl.el.style.opacity = currentConstOpacity;
+                    }
+                } else {
+                    lbl.el.style.display = 'none';
+                }
+            });
+
+            // Star name labels
+            let showSL = document.getElementById('chk-star-labels').checked;
+            let nameMagLim = parseFloat(document.getElementById('name-mag-slider').value);
+            starLabelEls.forEach(lbl => {
+                if (showSL && lbl.mag <= nameMagLim) {
+                    if (positionLabel(lbl.el, lbl.ra, lbl.dec, size, 12, -4)) {
+                        lbl.el.style.opacity = currentStarsOpacity;
+                    }
+                } else {
+                    lbl.el.style.display = 'none';
+                }
+            });
+
+            // DSO labels
+            let showDSO = document.getElementById('chk-dso').checked;
+            if (showDSO) {
+                let dsoMagLim = parseFloat(document.getElementById('dso-mag-slider').value);
+                let catM = document.getElementById('chk-dso-m').checked;
+                let catNGC = document.getElementById('chk-dso-ngc').checked;
+                let catIC = document.getElementById('chk-dso-ic').checked;
+                let catLDN = document.getElementById('chk-dso-ldn').checked;
+                let typeGx = document.getElementById('chk-dso-galaxies').checked;
+                let typeNb = document.getElementById('chk-dso-nebulae').checked;
+                let typeDn = document.getElementById('chk-dso-dark').checked;
+                let typeGc = document.getElementById('chk-dso-globular').checked;
+                let typeOc = document.getElementById('chk-dso-open').checked;
+                let typePn = document.getElementById('chk-dso-planetary').checked;
+                let typeMap = { galaxies: typeGx, nebulae: typeNb, dark: typeDn, globular: typeGc, open: typeOc, planetary: typePn };
+                let showNullMag = document.getElementById('chk-dso-nullmag').checked;
+
+                dsoLabelEls.forEach(lbl => {
+                    let catOk = (catM && lbl.catalogs.includes('m')) ||
+                                (catNGC && lbl.catalogs.includes('ngc')) ||
+                                (catIC && lbl.catalogs.includes('ic')) ||
+                                (catLDN && lbl.catalogs.includes('ldn'));
+                    let typeOk = lbl.typeGroup && typeMap[lbl.typeGroup];
+                    let magOk = lbl.mag === null ? showNullMag : lbl.mag <= dsoMagLim;
+                    if (catOk && typeOk && magOk) {
+                        positionLabel(lbl.el, lbl.ra, lbl.dec, size, 10, -4);
+                    } else {
+                        lbl.el.style.display = 'none';
+                    }
+                });
+            } else {
+                dsoLabelEls.forEach(lbl => { lbl.el.style.display = 'none'; });
+            }
+        }
+
+        // Moon marker
+        if (moonMarkerEl && document.getElementById('chk-moon').checked) {
+            let jd = getJD(getObsTime());
+            let moon = getMoonInfo(jd);
+            let pix = safeW2P(moon.ra, moon.dec);
+            if (pix && pix[0] >= -30 && pix[0] <= size[0]+30 && pix[1] >= -30 && pix[1] <= size[1]+30) {
+                moonMarkerEl.style.transform = `translate(${pix[0] - 14}px, ${pix[1] - 18}px)`;
+                moonMarkerEl.style.display = 'block';
+                moonMarkerEl.querySelector('.moon-emoji').textContent = moon.emoji;
+                moonMarkerEl.querySelector('.moon-info').textContent = `Moon ${Math.round(moon.illum * 100)}%`;
+            } else {
+                moonMarkerEl.style.display = 'none';
+            }
+        } else if (moonMarkerEl) {
+            moonMarkerEl.style.display = 'none';
+        }
+
+        // Planet markers
+        let showPlanets = document.getElementById('chk-planets').checked;
+        Object.keys(PLANETS).forEach(name => {
+            let el = planetMarkerEls[name];
+            if (!el) return;
+            if (showPlanets) {
+                let jd = getJD(getObsTime());
+                let pos = getPlanetPosition(name, jd);
+                let pix = safeW2P(pos.ra, pos.dec);
+                if (pix && pix[0] >= -30 && pix[0] <= size[0]+30 && pix[1] >= -30 && pix[1] <= size[1]+30) {
+                    el.style.transform = `translate(${pix[0] - 5}px, ${pix[1] - 5}px)`;
+                    el.style.display = 'block';
+                } else {
+                    el.style.display = 'none';
+                }
+            } else {
+                el.style.display = 'none';
+            }
+        });
+
+        // Night mode overlay
+        document.getElementById('night-mode-overlay').style.display =
+            document.getElementById('chk-nightmode').checked ? 'block' : 'none';
+
+        // Draw canvas overlay
+        drawOverlayCanvas();
+    }
+
+    // ===== SUB-PANEL TOGGLE =====
+    function toggleSubPanel(id) {
+        document.getElementById(id).classList.toggle('collapsed');
+        debouncedSave();
+    }
+
+    // ===== MODE SWITCHING =====
+    function setAppMode(mode) {
+        appMode = mode;
+        document.getElementById('btn-mode-framing').classList.toggle('active', mode === 'framing');
+        document.getElementById('btn-mode-skychart').classList.toggle('active', mode === 'skychart');
+        document.getElementById('section-framing').style.display = mode === 'framing' ? 'block' : 'none';
+        document.getElementById('section-skychart').style.display = mode === 'skychart' ? 'block' : 'none';
+        syncQuickBar();
+    }
+
+    // ===== TIME CONTROLS =====
+    function syncQuickBar() {
+        var nb = document.getElementById('qb-now');
+        var tv = document.getElementById('qb-time-val');
+        if (nb) {
+            nb.className = isTimeNow ? 'live' : 'static';
+            nb.querySelector('.qb-time-label').textContent = isTimeNow ? 'LIVE' : 'SET';
+        }
+        if (tv) {
+            var t = isTimeNow ? new Date() : manualTime;
+            var d = t.getDate(), mo = t.toLocaleString('en', {month:'short'}), hh = String(t.getHours()).padStart(2,'0'), mm = String(t.getMinutes()).padStart(2,'0');
+            tv.textContent = d + ' ' + mo + ' ' + hh + ':' + mm;
+        }
+        var qf = document.getElementById('qb-framing'), qs = document.getElementById('qb-skychart');
+        if (qf) qf.classList.toggle('active', appMode === 'framing');
+        if (qs) qs.classList.toggle('active', appMode === 'skychart');
+        var qn = document.getElementById('qb-night');
+        if (qn) qn.classList.toggle('active', document.getElementById('chk-nightmode').checked);
+        var ql = document.getElementById('qb-fov-lock');
+        if (ql) {
+            ql.innerHTML = fovLocked
+                ? '<svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16.5" r="1.5"/></svg>'
+                : '<svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+            ql.classList.toggle('active', fovLocked);
+        }
+    }
+
+    function clockTick() {
+        if (!isTimeNow) return;
+        document.getElementById('time-display').innerHTML = `LIVE: ${new Date().toLocaleString()}`;
+        document.getElementById('time-display').style.color = '#00ff00';
+        syncQuickBar();
+    }
+    function offsetTime(unit, amt) {
+        if (isTimeNow) { manualTime = new Date(); isTimeNow = false; }
+
+        // In sky chart mode, preserve Alt-Az pointing so grid stays fixed and sky moves
+        let savedAltAz = null;
+        if (appMode === 'skychart' && aladin) {
+            let radec = aladin.getRaDec();
+            if (radec && radec.length >= 2) {
+                let lst = getLST(getJD(manualTime), obsLon);
+                savedAltAz = raDecToAltAz(radec[0], radec[1], obsLat, lst);
+            }
+        }
+
+        if (unit === 'M') manualTime.setMonth(manualTime.getMonth() + amt);
+        if (unit === 'd') manualTime.setDate(manualTime.getDate() + amt);
+        if (unit === 'h') manualTime.setHours(manualTime.getHours() + amt);
+
+        // Re-point Aladin to the same Alt-Az direction in the new time
+        if (savedAltAz && aladin) {
+            let newLst = getLST(getJD(manualTime), obsLon);
+            let [newRa, newDec] = altAzToRaDec(savedAltAz[0], savedAltAz[1], obsLat, newLst);
+            aladin.gotoRaDec(newRa, newDec);
+        }
+
+        document.getElementById('time-display').innerHTML = `STATIC: ${manualTime.toLocaleString()}`;
+        document.getElementById('time-display').style.color = '#ffaa00';
+        syncQuickBar();
+    }
+    function setTimeNow() { isTimeNow = true; clockTick(); }
+
+    // ===== UI EVENT BINDINGS =====
+    // input-lat / input-lon are now hidden; location is edited in Settings page only
+
+
+
+    document.getElementById('panel-tab-btn').addEventListener('click', () => {
+        document.getElementById('ui-panel').classList.toggle('open');
+        document.getElementById('app-container').classList.toggle('panel-open');
+        // After the CSS transition, tell Aladin (and canvas overlays) to resize
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 320);
+    });
+
+    document.getElementById('search-btn').addEventListener('click', () => { let t = document.getElementById('search-input').value; if(t) aladin.gotoObject(t); });
+    document.getElementById('search-input').addEventListener('keypress', (e) => { if(e.key === 'Enter') document.getElementById('search-btn').click(); });
+    document.getElementById('survey-select').addEventListener('change', (e) => { if(aladin) aladin.setImageSurvey(e.target.value); });
+    document.getElementById('rotation-slider').addEventListener('input', (e) => { document.getElementById('rotation-val').innerText = e.target.value + '°'; });
+    document.getElementById('zoom-in').addEventListener('click', () => { let f = aladin.getFov(); aladin.setFov((Array.isArray(f)?f[0]:f)*0.7); });
+    document.getElementById('zoom-out').addEventListener('click', () => { let f = aladin.getFov(); aladin.setFov((Array.isArray(f)?f[0]:f)*1.4); });
+
+    // Background brightness — ONLY affects #aladin-lite-div (the survey).
+    document.getElementById('brightness-slider').addEventListener('input', (e) => {
+        document.getElementById('aladin-lite-div').style.filter = `brightness(${e.target.value})`;
+    });
+
+    // FOV & Favorites add buttons
+    document.getElementById('fov-add-btn').addEventListener('click', addFov);
+    document.getElementById('fav-add-btn').addEventListener('click', addFavorite);
+    document.getElementById('fav-add-name').addEventListener('keypress', (e) => { if(e.key === 'Enter') addFavorite(); });
+
+    // ===== MOSAIC CONTROLS =====
+    document.getElementById('mosaic-enabled').addEventListener('change', function() {
+        mosaicActive = this.checked;
+        document.getElementById('mosaic-controls').style.display = mosaicActive ? '' : 'none';
+        renderMosaicTiles();
+        debouncedSave();
+    });
+    ['mosaic-cols', 'mosaic-rows', 'mosaic-overlap'].forEach(function(id) {
+        document.getElementById(id).addEventListener('input', function() {
+            if (id === 'mosaic-cols') mosaicCols = Math.max(1, parseInt(this.value) || 1);
+            if (id === 'mosaic-rows') mosaicRows = Math.max(1, parseInt(this.value) || 1);
+            if (id === 'mosaic-overlap') mosaicOverlap = Math.max(0, Math.min(50, parseInt(this.value) || 0));
+            updateMosaicInfo();
+            renderMosaicTiles();
+            debouncedSave();
+        });
+    });
+
+    // ===== QUICK-BAR BINDINGS =====
+    document.getElementById('qb-search-btn').addEventListener('click', () => {
+        let t = document.getElementById('qb-search').value.trim();
+        if (t && aladin) { aladin.gotoObject(t); document.getElementById('qb-search').value = ''; }
+    });
+    document.getElementById('qb-search').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') document.getElementById('qb-search-btn').click();
+    });
+    document.getElementById('qb-framing').addEventListener('click', () => { setAppMode('framing'); syncQuickBar(); });
+    document.getElementById('qb-skychart').addEventListener('click', () => { setAppMode('skychart'); syncQuickBar(); });
+    document.getElementById('qb-zin').addEventListener('click', () => { let f = aladin.getFov(); aladin.setFov((Array.isArray(f)?f[0]:f)*0.7); });
+    document.getElementById('qb-zout').addEventListener('click', () => { let f = aladin.getFov(); aladin.setFov((Array.isArray(f)?f[0]:f)*1.4); });
+    document.getElementById('qb-reset').addEventListener('click', () => {
+        setTimeNow();
+        if (aladin) { aladin.gotoObject('M 42'); aladin.setFov(10); }
+    });
+    document.getElementById('qb-night').addEventListener('click', () => {
+        let chk = document.getElementById('chk-nightmode');
+        chk.checked = !chk.checked;
+        document.getElementById('night-mode-overlay').style.display = chk.checked ? 'block' : 'none';
+        syncQuickBar();
+        debouncedSave();
+    });
+
+    // FOV lock toggle — click FOV box to lock/unlock
+    function toggleFovLock() {
+        fovLocked = !fovLocked;
+        let box = document.getElementById('camera-fov-box');
+        let icon = document.getElementById('fov-lock-icon');
+        if (fovLocked) {
+            let radec = aladin.getRaDec();
+            fovLockedRaDec = radec ? [radec[0], radec[1]] : null;
+            box.classList.add('fov-locked');
+            icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18 10h-1V7A5 5 0 0 0 7 7v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2zM9 7a3 3 0 0 1 6 0v3H9V7zm4 10.5a1.5 1.5 0 0 1-3 0v-3a1.5 1.5 0 0 1 3 0v3z"/></svg>';
+        } else {
+            fovLockedRaDec = null;
+            box.classList.remove('fov-locked');
+            icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18 10h-1V7A5 5 0 0 0 7 7v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2zM9 7a3 3 0 0 1 6 0v3H9V7zm9 13H6v-8h12v8z"/></svg>';
+            document.getElementById('fov-overlay').style.left = '50%';
+            document.getElementById('fov-overlay').style.top = '50%';
+        }
+        syncQuickBar();
+        debouncedSave();
+    }
+
+    // FOV box: only intercept click for lock toggle; pass wheel/drag to Aladin underneath
+    (function() {
+        let fovBox = document.getElementById('camera-fov-box');
+        let aladinDiv = document.getElementById('aladin-lite-div');
+        fovBox.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleFovLock();
+        });
+        // Forward wheel events so zoom works over FOV
+        fovBox.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            aladinDiv.dispatchEvent(new WheelEvent('wheel', e));
+        }, { passive: false });
+        // Forward drag: on mousedown, temporarily disable pointer-events so Aladin gets the drag
+        fovBox.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return; // only left button
+            fovBox.style.pointerEvents = 'none';
+            // Re-dispatch mousedown to aladin so drag starts
+            aladinDiv.dispatchEvent(new MouseEvent('mousedown', e));
+            let restore = () => { fovBox.style.pointerEvents = 'auto'; };
+            window.addEventListener('mouseup', restore, { once: true });
+        });
+    })();
+
+    // Quick bar: FOV lock + re-center
+    document.getElementById('qb-fov-lock').addEventListener('click', () => { toggleFovLock(); });
+    document.getElementById('qb-fov-center').addEventListener('click', () => {
+        if (fovLocked && fovLockedRaDec && aladin) {
+            aladin.gotoRaDec(fovLockedRaDec[0], fovLockedRaDec[1]);
+        }
+    });
+
+    // ===== TELESCOPIUS / DISCOVER =====
+    let discoverHighlights = [];   // raw highlights data
+    let discoverFilter = 'all';    // current filter chip
+    let telescopiusListTargets = []; // targets from selected list
+    let discoverSearchDebounce = null;
+
+    function applyTelescopiusNotConfiguredState() {
+        document.getElementById('discover-not-configured-notice').style.display = 'block';
+        document.getElementById('discover-telescopius-content').style.display = 'none';
+    }
+
+    function getTimezone() { return Intl.DateTimeFormat().resolvedOptions().timeZone; }
+    function getDatetimeStr() {
+        let d = isTimeNow ? new Date() : manualTime;
+        return d.toISOString().slice(0, 19).replace('T', ' ');
+    }
+    function telescopiusParams() {
+        return { lat: obsLat, lon: obsLon, timezone: getTimezone(), datetime: getDatetimeStr() };
+    }
+
+    // --- Solar System Times ---
+    async function loadSolarSystemTimes() {
+        let container = document.getElementById('solar-times-container');
+        container.innerHTML = '<span class="discover-loading">Loading solar data…</span>';
+        try {
+            let p = telescopiusParams();
+            let url = `${API_BASE}/api/skychart/telescopius/solar-system?lat=${p.lat}&lon=${p.lon}&timezone=${encodeURIComponent(p.timezone)}&datetime=${encodeURIComponent(p.datetime)}`;
+            let resp = await fetch(url);
+            if (!resp.ok) throw new Error('API error ' + resp.status);
+            let data = await resp.json();
+            renderSolarTimes(data, container);
+        } catch (e) {
+            container.innerHTML = '<span class="discover-error">' + escapeHtml(e.message) + '</span>';
+        }
+    }
+
+    function renderSolarTimes(data, container) {
+        let items = [];
+        let tw = data.sun && data.sun.twilights ? data.sun.twilights : {};
+        if (data.sun) {
+            if (data.sun.set || tw.sunset) items.push({ label: '🌅 Sunset', val: fmtTime(data.sun.set || tw.sunset) });
+            if (tw.astronomical_sunset) items.push({ label: '🌑 Astro Dark', val: fmtTime(tw.astronomical_sunset) });
+            if (tw.astronomical_sunrise) items.push({ label: '🌑 Astro Dawn', val: fmtTime(tw.astronomical_sunrise) });
+            if (data.sun.rise) items.push({ label: '🌄 Sunrise', val: fmtTime(data.sun.rise) });
+        }
+        if (data.moon) {
+            if (data.moon.rise) items.push({ label: '🌙 Moonrise', val: fmtTime(data.moon.rise) });
+            if (data.moon.set) items.push({ label: '🌙 Moonset', val: fmtTime(data.moon.set) });
+        }
+        container.innerHTML = items.map(i =>
+            `<span class="st-item"><span class="st-label">${i.label}</span> <span class="st-val">${i.val}</span></span>`
+        ).join('');
+        if (items.length === 0) container.innerHTML = '<span class="discover-empty">No solar data available</span>';
+    }
+
+    function fmtTime(t) {
+        // Handle ISO string or HH:MM format
+        if (!t) return '—';
+        if (typeof t === 'string' && t.includes('T')) {
+            try { return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch(_) {}
+        }
+        return String(t);
+    }
+
+    // --- Tonight's Highlights ---
+    async function loadHighlights(forceRefresh = false) {
+        let container = document.getElementById('highlights-list');
+        container.innerHTML = '<div class="discover-loading">Loading highlights…</div>';
+        document.getElementById('load-highlights-btn').style.display = 'none';
+        try {
+            let p = telescopiusParams();
+            let perPage = 100;
+            let refreshParam = forceRefresh ? '&refresh=true' : '';
+            let baseUrl = `${API_BASE}/api/skychart/telescopius/highlights?lat=${p.lat}&lon=${p.lon}&timezone=${encodeURIComponent(p.timezone)}&datetime=${encodeURIComponent(p.datetime)}&min_alt=15&results_per_page=${perPage}${refreshParam}`;
+            // Fetch first page
+            let resp = await fetch(baseUrl + '&page=1');
+            if (!resp.ok) throw new Error('API error ' + resp.status);
+            let data = await resp.json();
+            let allRaw = data.page_results || [];
+            let matched = data.matched || allRaw.length;
+            let totalPages = Math.ceil(matched / perPage);
+            // Fetch remaining pages in parallel
+            if (totalPages > 1) {
+                container.innerHTML = `<div class="discover-loading">Loading highlights… page 1/${totalPages}</div>`;
+                let pagePromises = [];
+                for (let pg = 2; pg <= totalPages; pg++) {
+                    pagePromises.push(
+                        fetch(baseUrl + '&page=' + pg).then(r => r.ok ? r.json() : null)
+                    );
+                }
+                let pages = await Promise.all(pagePromises);
+                pages.forEach(pd => {
+                    if (pd && pd.page_results) allRaw = allRaw.concat(pd.page_results);
+                });
+            }
+            discoverHighlights = allRaw.map(normalizeTarget);
+            renderHighlights();
+        } catch (e) {
+            container.innerHTML = '<div class="discover-error">' + escapeHtml(e.message) + '</div>';
+            document.getElementById('load-highlights-btn').style.display = '';
+        }
+    }
+
+    function renderHighlights() {
+        let filtered = discoverHighlights;
+        if (discoverFilter !== 'all') {
+            let types = discoverFilter.split(',');
+            filtered = discoverHighlights.filter(obj => {
+                let t = (obj.types || obj.type || '').toLowerCase();
+                return types.some(ft => t.includes(ft));
+            });
+        }
+        let container = document.getElementById('highlights-list');
+        if (filtered.length === 0) {
+            container.innerHTML = discoverHighlights.length > 0
+                ? '<div class="discover-empty">No objects match this filter</div>'
+                : '<div class="discover-empty">No highlights found</div>';
+            return;
+        }
+        let countHtml = `<div style="font-size:0.7rem;color:rgba(255,255,255,0.5);margin-bottom:4px;">${filtered.length} of ${discoverHighlights.length} targets</div>`;
+        container.innerHTML = countHtml + filtered.map(obj => renderDiscoverCard(obj)).join('');
+        bindDiscoverCardActions(container);
+    }
+
+    // Filter chips
+    document.getElementById('highlight-chips').addEventListener('click', (e) => {
+        let chip = e.target.closest('.filter-chip');
+        if (!chip) return;
+        document.querySelectorAll('#highlight-chips .filter-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        discoverFilter = chip.dataset.filter;
+        renderHighlights();
+    });
+
+    // --- Telescopius Search ---
+    async function telescopiusSearch() {
+        let query = document.getElementById('telescopius-search-input').value.trim();
+        if (!query) return;
+        let container = document.getElementById('search-results-list');
+        container.innerHTML = '<div class="discover-loading">Searching…</div>';
+        try {
+            let p = telescopiusParams();
+            let types = document.getElementById('ts-type-filter').value;
+            let order = document.getElementById('ts-sort').value;
+            let params = new URLSearchParams({
+                lat: p.lat, lon: p.lon, timezone: p.timezone, datetime: p.datetime,
+                name: query, min_alt: 0, results_per_page: 20,
+            });
+            if (types) params.set('types', types);
+            if (order) params.set('order', order);
+            let resp = await fetch(`${API_BASE}/api/skychart/telescopius/search?${params}`);
+            if (!resp.ok) throw new Error('API error ' + resp.status);
+            let data = await resp.json();
+            let raw = data.page_results || data.objects || data.results || [];
+            let objects = raw.map(normalizeTarget);
+            if (objects.length === 0) {
+                container.innerHTML = '<div class="discover-empty">No results found</div>';
+            } else {
+                container.innerHTML = objects.map(obj => renderDiscoverCard(obj)).join('');
+                bindDiscoverCardActions(container);
+            }
+        } catch (e) {
+            container.innerHTML = '<div class="discover-error">' + escapeHtml(e.message) + '</div>';
+        }
+    }
+
+    document.getElementById('telescopius-search-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') telescopiusSearch();
+    });
+
+    // --- Telescopius Lists ---
+    async function loadTelescopiusLists(forceRefresh = false) {
+        let sel = document.getElementById('telescopius-lists-select');
+        sel.innerHTML = '<option value="">Loading…</option>';
+        try {
+            let refreshParam = forceRefresh ? '?refresh=true' : '';
+            let resp = await fetch(`${API_BASE}/api/skychart/telescopius/lists${refreshParam}`);
+            if (!resp.ok) throw new Error('API error ' + resp.status);
+            let data = await resp.json();
+            let lists = data.lists || data.objects || data || [];
+            sel.innerHTML = '<option value="">— Select a list —</option>';
+            if (Array.isArray(lists)) {
+                lists.forEach(l => {
+                    let opt = document.createElement('option');
+                    opt.value = l.id || l.list_id || '';
+                    opt.textContent = (l.name || l.title || 'Untitled') + (l.objects_count != null ? ` (${l.objects_count})` : '');
+                    sel.appendChild(opt);
+                });
+            }
+        } catch (e) {
+            sel.innerHTML = '<option value="">Error loading lists</option>';
+        }
+    }
+
+    document.getElementById('telescopius-lists-select').addEventListener('change', async (e) => {
+        let id = e.target.value;
+        let container = document.getElementById('telescopius-list-targets');
+        let importBtn = document.getElementById('import-list-btn');
+        if (!id) { container.innerHTML = ''; importBtn.style.display = 'none'; return; }
+        container.innerHTML = '<div class="discover-loading">Loading list…</div>';
+        try {
+            let p = telescopiusParams();
+            let params = new URLSearchParams({ lat: p.lat, lon: p.lon, timezone: p.timezone, datetime: p.datetime });
+            let resp = await fetch(`${API_BASE}/api/skychart/telescopius/lists/${encodeURIComponent(id)}?${params}`);
+            if (!resp.ok) throw new Error('API error ' + resp.status);
+            let data = await resp.json();
+            let raw = data.objects || data.targets || data.page_results || [];
+            telescopiusListTargets = raw.map(normalizeTarget);
+            if (telescopiusListTargets.length === 0) {
+                container.innerHTML = '<div class="discover-empty">Empty list</div>';
+                importBtn.style.display = 'none';
+            } else {
+                container.innerHTML = telescopiusListTargets.map(obj => renderDiscoverCard(obj)).join('');
+                bindDiscoverCardActions(container);
+                importBtn.style.display = '';
+            }
+        } catch (e) {
+            container.innerHTML = '<div class="discover-error">' + escapeHtml(e.message) + '</div>';
+            importBtn.style.display = 'none';
+        }
+    });
+
+    function importTelescopiusListToFavorites() {
+        if (!telescopiusListTargets.length) return;
+        let maxId = favList.reduce((m, f) => Math.max(m, f.id), 0);
+        let imported = 0;
+        telescopiusListTargets.forEach(obj => {
+            let ra = obj.ra != null ? parseFloat(obj.ra) : null;
+            let dec = obj.dec != null ? parseFloat(obj.dec) : null;
+            if (ra == null || dec == null || isNaN(ra) || isNaN(dec)) return;
+            let name = obj.name || obj.main_id || 'Unnamed';
+            // Skip duplicates
+            if (favList.some(f => f.name === name)) return;
+            maxId++;
+            favList.push({ id: maxId, name: name, ra: Math.round(ra * 10000) / 10000, dec: Math.round(dec * 10000) / 10000, rotation: 0, fov: 2 });
+            imported++;
+        });
+        renderFavList();
+        saveFavoritesToServer();
+        if (imported > 0) {
+            document.getElementById('import-list-btn').textContent = `Imported ${imported} targets ✓`;
+            setTimeout(() => { document.getElementById('import-list-btn').textContent = 'Import to Favorites'; }, 2000);
+        }
+    }
+
+    // Flatten Telescopius response into a flat target
+    // Handles: highlights/search {object, tonight_times, transit_observation}
+    //          list items {name, coordinates: {ra, dec}, size_deg, notes}
+    // NOTE: Telescopius returns RA in hours — Aladin needs degrees (ra * 15)
+    function normalizeTarget(item) {
+        // List item format: {name, coordinates: {ra, dec}, ...}
+        if (item.coordinates) {
+            let raH = item.coordinates.ra;
+            let dec = item.coordinates.dec;
+            let raDeg = raH != null ? raH * 15 : null;
+            return {
+                name: item.name || 'Unnamed',
+                main_id: '',
+                type: '',
+                types: '',
+                ra: raDeg,
+                dec: dec,
+                magnitude: null,
+                size: item.size_deg ? (item.size_deg >= 1 ? item.size_deg.toFixed(1) + '°' : (item.size_deg * 60).toFixed(1) + '\'') : '',
+                altitude: null,
+                constellation: '',
+                image_url: '',
+                thumbnail: raDeg != null && dec != null
+                    ? `https://alasky.u-strasbg.fr/hips-image-services/hips2fits?hips=CDS/P/DSS2/color&width=120&height=120&fov=0.25&projection=TAN&ra=${raDeg}&dec=${dec}&format=jpg`
+                    : '',
+                url: '',
+                tonight_times: {},
+                notes: item.notes || '',
+            };
+        }
+        // Highlights/search format: {object: {...}, tonight_times, transit_observation}
+        if (item.object) {
+            let o = item.object;
+            let obs = item.transit_observation || {};
+            let raDeg = o.ra != null ? o.ra * 15 : null;
+            return {
+                name: o.main_name || o.names?.[0] || o.main_id || 'Unnamed',
+                main_id: o.main_id || '',
+                type: (o.types && o.types[0]) || '',
+                types: (o.types || []).join(',').toLowerCase(),
+                ra: raDeg,
+                dec: o.dec,
+                magnitude: o.visual_mag,
+                size: o.major_axis ? (o.major_axis >= 60 ? (o.major_axis / 60).toFixed(1) + '\'' : o.major_axis + '"') : '',
+                altitude: obs.alt,
+                constellation: o.con_name || o.con || '',
+                image_url: o.main_image_url || '',
+                thumbnail: o.thumbnail_url || '',
+                url: o.url || '',
+                tonight_times: item.tonight_times || {},
+            };
+        }
+        // Already flat / unknown format — return as-is
+        return item;
+    }
+
+    // --- HTML escaping ---
+    function escapeHtml(str) {
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
+    // --- Shared rendering ---
+    function renderDiscoverCard(obj) {
+        let name = escapeHtml(String(obj.name || obj.main_id || 'Unnamed'));
+        let type = escapeHtml(String(obj.type || ''));
+        let mag = obj.magnitude != null ? parseFloat(obj.magnitude).toFixed(1) : '';
+        let size = escapeHtml(String(obj.size || ''));
+        let alt = obj.altitude != null ? Math.round(obj.altitude) + '°' : '';
+        let con = escapeHtml(String(obj.constellation || ''));
+        let ra = obj.ra != null ? obj.ra : '';
+        let dec = obj.dec != null ? obj.dec : '';
+        let imgUrl = obj.thumbnail || obj.image_url || '';
+        // Only allow http(s) image URLs to prevent javascript: URIs
+        if (imgUrl && !/^https?:\/\//i.test(imgUrl)) imgUrl = '';
+        imgUrl = escapeHtml(String(imgUrl));
+
+        let metaParts = [type, mag ? `mag ${mag}` : '', size || '', alt ? `alt ${alt}` : '', con].filter(Boolean);
+        let notesHtml = obj.notes ? `<div class="dc-meta" style="font-style:italic;opacity:0.7;">${escapeHtml(String(obj.notes))}</div>` : '';
+
+        let imgHtml = imgUrl
+            ? `<img class="dc-img" src="${imgUrl}" alt="${name}" onerror="this.style.display='none'">`
+            : '';
+
+        return `<div class="discover-card" data-ra="${escapeHtml(String(ra))}" data-dec="${escapeHtml(String(dec))}" data-name="${name}">
+            ${imgHtml}
+            <div class="dc-info">
+                <div class="dc-name" title="${name}">${name}</div>
+                <div class="dc-meta">${metaParts.join(' · ')}</div>
+                ${notesHtml}
+            </div>
+            <div class="dc-actions">
+                <button class="dc-goto" title="Center on map">◎</button>
+                <button class="dc-save" title="Save to favorites">★</button>
+            </div>
+        </div>`;
+    }
+
+    function bindDiscoverCardActions(container) {
+        container.querySelectorAll('.dc-goto').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                let card = e.target.closest('.discover-card');
+                let ra = parseFloat(card.dataset.ra);
+                let dec = parseFloat(card.dataset.dec);
+                let name = card.dataset.name;
+                if (!isNaN(ra) && !isNaN(dec) && aladin) {
+                    aladin.gotoRaDec(ra, dec);
+                } else if (name && aladin) {
+                    aladin.gotoObject(name);
+                }
+            });
+        });
+        container.querySelectorAll('.dc-save').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                let card = e.target.closest('.discover-card');
+                let ra = parseFloat(card.dataset.ra);
+                let dec = parseFloat(card.dataset.dec);
+                let name = card.dataset.name || 'Unnamed';
+                if (isNaN(ra) || isNaN(dec)) return;
+                // Check duplicate
+                if (favList.some(f => f.name === name)) {
+                    e.target.textContent = '✓';
+                    setTimeout(() => { e.target.textContent = '★'; }, 1000);
+                    return;
+                }
+                let maxId = favList.reduce((m, f) => Math.max(m, f.id), 0);
+                favList.push({ id: maxId + 1, name, ra: Math.round(ra * 10000) / 10000, dec: Math.round(dec * 10000) / 10000, rotation: 0, fov: 2 });
+                renderFavList();
+                saveFavoritesToServer();
+                e.target.textContent = '✓';
+                setTimeout(() => { e.target.textContent = '★'; }, 1000);
+            });
+        });
+        // Click card to center
+        container.querySelectorAll('.discover-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.dc-actions')) return;
+                let ra = parseFloat(card.dataset.ra);
+                let dec = parseFloat(card.dataset.dec);
+                let name = card.dataset.name;
+                if (!isNaN(ra) && !isNaN(dec) && aladin) {
+                    aladin.gotoRaDec(ra, dec);
+                } else if (name && aladin) {
+                    aladin.gotoObject(name);
+                }
+            });
+        });
+    }
+
+    // Auto-load solar times, highlights, and lists when Discover panel opens
+    (function() {
+        let spDiscover = document.getElementById('sp-discover');
+        let solarLoaded = false;
+        let highlightsLoaded = false;
+        let listsLoaded = false;
+        let observer = new MutationObserver(function() {
+            if (!spDiscover.classList.contains('collapsed')) {
+                if (!telescopiusAvailable) { applyTelescopiusNotConfiguredState(); return; }
+                if (!solarLoaded) { solarLoaded = true; loadSolarSystemTimes(); }
+                if (!highlightsLoaded) { highlightsLoaded = true; loadHighlights(); }
+                if (!listsLoaded) { listsLoaded = true; loadTelescopiusLists(); }
+            }
+        });
+        observer.observe(spDiscover, { attributes: true, attributeFilter: ['class'] });
+    })();
+
+
+</script>
+</body>
+</html>

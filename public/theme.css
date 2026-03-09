@@ -1,0 +1,10 @@
+/* ===== APD Master Theme =====
+   Single source of truth for accent colors.
+   Change here → changes everywhere.            */
+
+:root {
+  --accent: #82a6c3;
+  --accent-rgb: 130, 166, 195;
+  --accent-hover: #7292ac;
+  --accent-light: #a3bdd4;
+}
