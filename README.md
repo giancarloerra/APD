@@ -33,7 +33,7 @@ I've decided to open source it as I think it could be useful to other astrophoto
 - [🔑 Required services and API keys](#-required-services-and-api-keys)
 - [🌐 Quick Deployment (on Render.com)](#-quick-deployment-on-rendercom)
 - [🚀 Deployment Guide](#-deployment-guide)
-- [⏰ Automated Data Collection](#-automated-data-collection)
+- [⏰ Automated Weather Refresh](#-automated-weather-refresh)
 - [🆘 Support / hosting help](#-support--hosting-help)
 - [🏗️ Architecture](#️-architecture)
 - [🔐 Authentication](#-authentication)
@@ -178,7 +178,7 @@ If you don't have a Telescopius key, the sky dashboard still works fully — onl
 
 ### cron-job.org — optional, free
 
-APD fetches fresh weather data automatically when you open the dashboard, but for proactive twice-daily updates (so the forecast is always ready when you need it), point a free HTTP cron job at your deployed URL. See [Automated Data Collection](#-automated-data-collection) for the full setup.
+APD fetches fresh weather data automatically when you open the dashboard, but for proactive twice-daily updates (so the forecast is always ready when you need it), point a free HTTP cron job at your deployed URL. See [Automated Weather Refresh](#-automated-weather-refresh) for the full setup.
 
 ---
 
@@ -279,26 +279,48 @@ On every push to `main`, Render will redeploy automatically.
 
 When you open the dashboard and the weather data is stale (older than 2:30 PM the previous day), APD will download fresh data automatically within that request — but you'll wait a few seconds while it fetches. A cron job pre-fetches the data on a fixed schedule so it's always ready the moment you open the app.
 
-**Option A — cron-job.org (free)**
+**Step 1 — Generate a trigger key**
+
+Go to **Settings → Automated Weather Refresh** and click **Generate Key**. A unique URL will appear — copy it immediately (the key is only shown once). The URL looks like:
+
+```
+POST https://your-app.example.com/api/weather/refresh/trigger?key=<random-64-char-hex>
+```
+
+You can rotate or revoke the key at any time from the same Settings card.
+
+**Step 2 — Set up a cron service**
+
+**Option A — cron-job.org (free, recommended)**
 
 1. Sign up at [cron-job.org](https://cron-job.org).
-2. Create two jobs calling `POST https://<your-app-url>/api/weather/refresh` with your `MASTER_PASSWORD` cookie or open endpoint.
+2. Create two jobs using the trigger URL you copied above. Set the request method to **POST**.
 3. Suggested schedule: `30 9 * * *` (09:30) and `35 13 * * *` (13:35).
 
 **Option B — GitHub Actions scheduled workflow**
 
-Add a workflow that calls `curl -X POST https://<your-app-url>/api/weather/refresh` on a schedule.
+Add a workflow that calls the trigger URL on a schedule:
+
+```yaml
+- run: curl -sf -X POST "${{ secrets.APD_TRIGGER_URL }}"
+```
+
+**Alternative — environment variable**
+
+If you prefer to manage the token outside the UI, set `CRON_TRIGGER_TOKEN` in your `.env` or hosting dashboard. The trigger URL is then: `POST https://<your-app-url>/api/weather/refresh/trigger?key=<your-token-value>`.
 
 ---
 
-## ⏰ Automated Data Collection
+## ⏰ Automated Weather Refresh
 
 ### Scheduled Downloads
 
-A cron service calls `POST /api/weather/refresh` on a schedule to pre-fetch fresh data before you open the dashboard. Without it the app still works — it downloads on demand when you visit — but you wait a few seconds. With it, data is always ready instantly.
+A cron service calls the trigger endpoint on a schedule to pre-fetch fresh data before you open the dashboard. Without it the app still works — it downloads on demand when you visit — but you wait a few seconds. With it, data is always ready instantly.
 
 - **Service**: any free HTTP cron service (e.g. [cron-job.org](https://cron-job.org), GitHub Actions scheduled workflows, Render cron jobs)
-- **Endpoint**: `POST /api/weather/refresh`
+- **Endpoint**: `POST /api/weather/refresh/trigger?key=<your-key>` (public — authenticated by the key, not by session/cookie)
+- **Key management**: generate, rotate, or revoke from **Settings → Automated Weather Refresh** (or set `CRON_TRIGGER_TOKEN` env var)
+- **Rate limit**: 3 requests/minute (separate from the manual refresh limit of 5/min)
 - **Recommended schedule**: once ~10:30 and once ~14:35 local time
 - **Timezone handling**: the staleness check uses your server's local time — no extra config needed
 
@@ -363,9 +385,10 @@ APD requires a few third-party accounts and some technical setup. If you need he
 
 The app uses a single **master password** for access control.
 
-- When `MASTER_PASSWORD` is set in `.env`, all routes require authentication (except `/api/health` and `/api/weather/summary`)
+- When `MASTER_PASSWORD` is set in `.env`, all routes require authentication (except `/api/health`, `/api/weather/summary`, and `/api/weather/refresh/trigger`)
 - When `MASTER_PASSWORD` is **not set** (or empty), auth is completely disabled — all routes are open
 - Sessions use HMAC-SHA256 signed tokens stored in httpOnly cookies (30-day expiry)
+- The cron trigger endpoint uses a separate token-based auth (not session cookies) — see [Automated Weather Refresh](#-automated-weather-refresh)
 - Login page served at `/login`
 
 ### Public Endpoints (always accessible, no auth required)
@@ -374,6 +397,7 @@ The app uses a single **master password** for access control.
 |----------|---------|
 | `GET /api/health` | Health check — also confirms Redis connectivity |
 | `GET /api/weather/summary` | LLM-friendly weather forecast JSON (for AI integrations) |
+| `POST /api/weather/refresh/trigger?key=…` | Cron trigger — token-authenticated weather refresh (see Settings) |
 | `GET /api/auth/check` | Check authentication status |
 | `POST /api/auth/login` | Login with master password |
 | `POST /api/auth/logout` | Clear session |
@@ -405,6 +429,7 @@ cp .env.example .env
 | `UPSTASH_REDIS_REST_TOKEN` | **Yes** | Upstash Redis REST token |
 | `MASTER_PASSWORD` | No | Master password — if unset, auth is disabled |
 | `SESSION_SECRET` | No | Secret for signing session tokens — auto-generated if unset |
+| `CRON_TRIGGER_TOKEN` | No | Cron trigger token — if set, the trigger endpoint accepts this value; otherwise manage via Settings UI → Redis |
 | `METEOBLUE_API_KEY` | No* | Meteoblue API key — without it, only Met Office data is shown; can also be set via UI → Redis |
 | `TELESCOPIUS_API_KEY` | No* | Telescopius API key — without it, sky chart DSO features are disabled; can also be set via UI → Redis |
 | `OBSERVER_LAT` | No | Default observer latitude (default: 52.6278) |
@@ -539,12 +564,21 @@ Both the weather dashboard and sky dashboard share a single observer location st
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | `GET` | `/api/weather` | Yes | Cached weather data (auto-downloads if stale) |
-| `POST` | `/api/weather/refresh` | Yes | Force fresh download |
+| `POST` | `/api/weather/refresh` | Yes | Force fresh download (manual/UI use) |
+| `POST` | `/api/weather/refresh/trigger?key=…` | **Token** | Cron trigger — public, token-authenticated (3 req/min) |
 | `GET` | `/api/weather/status` | Yes | Download status only |
 | `GET` | `/api/weather/metoffice` | Yes | Cached Met Office data |
 | `GET` | `/api/weather/summary` | **No** | LLM-friendly processed forecast |
 | `GET` | `/api/weather/meteoblue/key-status` | Yes | Check if Meteoblue key is configured |
 | `PUT` | `/api/weather/meteoblue/key` | Yes | Save Meteoblue API key to Redis |
+
+### Cron Trigger Token
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/api/settings/cron-token` | Yes | Get trigger key status (configured, source, timestamps) |
+| `POST` | `/api/settings/cron-token` | Yes | Generate or rotate trigger key (returns raw key once) |
+| `DELETE` | `/api/settings/cron-token` | Yes | Revoke trigger key |
 
 ### Location
 
