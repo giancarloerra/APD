@@ -297,7 +297,7 @@ async function getCronTokenData() {
   return null;
 }
 
-app.post("/api/weather/refresh/trigger", triggerLimiter, async (req, res) => {
+app.get("/api/weather/refresh/trigger", triggerLimiter, async (req, res) => {
   const key = typeof req.query.key === "string" ? req.query.key : "";
   if (!key) {
     return res.status(401).json({ error: "Missing trigger key" });
