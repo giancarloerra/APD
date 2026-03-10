@@ -274,6 +274,7 @@
 
   function useGeolocation() {
     if (!navigator.geolocation) { toast('Geolocation not supported by this browser', true); return; }
+    toast('Locating…');
     navigator.geolocation.getCurrentPosition(
       pos => {
         document.getElementById('inp-lat').value = pos.coords.latitude.toFixed(4);
@@ -281,7 +282,15 @@
         // altitude not reliably available from browser — leave as-is
         toast('Coordinates filled — click Save Location to confirm');
       },
-      () => toast('GPS permission denied or unavailable', true)
+      err => {
+        const msgs = {
+          1: 'GPS permission denied',
+          2: 'Position unavailable — try again or enter coordinates manually',
+          3: 'Location request timed out — try again',
+        };
+        toast(msgs[err.code] || 'Geolocation failed', true);
+      },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
     );
   }
 
