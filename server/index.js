@@ -106,6 +106,13 @@ const refreshLimiter = rateLimit({
   message: { error: "Too many refresh requests, please wait" },
 });
 
+// Rate limit cron trigger (stricter — cron services only need a few calls per day)
+const triggerLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 3,
+  message: { error: "Too many trigger requests" },
+});
+
 // Disable caching for API routes
 app.use("/api/*", (req, res, next) => {
   res.set({
@@ -279,6 +286,57 @@ app.get("/api/weather/summary", async (req, res) => {
 // ===== PUBLIC API: auth check =====
 // (already defined above)
 
+// ===== CRON TRIGGER (public — token-authenticated, not session-authenticated) =====
+const REDIS_KEY_CRON_TOKEN = "app:cron_trigger_token";
+
+async function getCronTokenData() {
+  try {
+    const stored = await redis.get(REDIS_KEY_CRON_TOKEN);
+    if (stored) return stored;
+  } catch (_) {}
+  return null;
+}
+
+app.post("/api/weather/refresh/trigger", triggerLimiter, async (req, res) => {
+  const key = typeof req.query.key === "string" ? req.query.key : "";
+  if (!key) {
+    return res.status(401).json({ error: "Missing trigger key" });
+  }
+
+  // Env var takes priority (consistent with other API keys)
+  const envToken = process.env.CRON_TRIGGER_TOKEN;
+  if (envToken) {
+    const a = crypto.createHash("sha256").update(key).digest();
+    const b = crypto.createHash("sha256").update(envToken).digest();
+    if (!crypto.timingSafeEqual(a, b)) {
+      return res.status(401).json({ error: "Invalid trigger key" });
+    }
+  } else {
+    // Check Redis-stored hash
+    const tokenData = await getCronTokenData();
+    if (!tokenData || !tokenData.hash) {
+      return res.status(401).json({ error: "No trigger key configured" });
+    }
+    const providedHash = crypto.createHash("sha256").update(key).digest("hex");
+    if (providedHash.length !== tokenData.hash.length ||
+        !crypto.timingSafeEqual(Buffer.from(providedHash), Buffer.from(tokenData.hash))) {
+      return res.status(401).json({ error: "Invalid trigger key" });
+    }
+    // Update lastUsedAt
+    try {
+      await redis.set(REDIS_KEY_CRON_TOKEN, { ...tokenData, lastUsedAt: new Date().toISOString() });
+    } catch (_) {}
+  }
+
+  try {
+    await weatherService.getWeatherData(true);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Cron trigger refresh error:", error);
+    res.status(500).json({ error: "Refresh failed" });
+  }
+});
+
 // ===== PROTECTED ROUTES — everything below requires auth =====
 app.use("/api/*", requireAuth);
 
@@ -450,12 +508,14 @@ async function getTelescopiusKey() {
 // ===== AGGREGATE SETTINGS API =====
 app.get("/api/settings", async (req, res) => {
   try {
-    const [loc, meteoblueKey, telescopiusKey, downloadStatus] = await Promise.all([
+    const [loc, meteoblueKey, telescopiusKey, downloadStatus, cronTokenData] = await Promise.all([
       getObserverLocation(),
       getMeteoblueKey(),
       getTelescopiusKey(),
       weatherService.getDownloadStatus(),
+      getCronTokenData(),
     ]);
+    const cronSource = process.env.CRON_TRIGGER_TOKEN ? "env" : (cronTokenData ? "redis" : "none");
     res.json({
       location: loc,
       apiKeys: {
@@ -464,10 +524,65 @@ app.get("/api/settings", async (req, res) => {
       },
       auth: { enabled: !!MASTER_PASSWORD },
       download: downloadStatus,
+      cronTrigger: {
+        configured: !!process.env.CRON_TRIGGER_TOKEN || !!cronTokenData,
+        source: cronSource,
+        createdAt: cronTokenData?.createdAt || null,
+        lastUsedAt: cronTokenData?.lastUsedAt || null,
+      },
     });
   } catch (error) {
     console.error("Error getting settings:", error);
     res.status(500).json({ error: "Failed to get settings" });
+  }
+});
+
+// ===== CRON TOKEN MANAGEMENT =====
+app.get("/api/settings/cron-token", async (req, res) => {
+  try {
+    if (process.env.CRON_TRIGGER_TOKEN) {
+      return res.json({ configured: true, source: "env", createdAt: null, lastUsedAt: null });
+    }
+    const data = await getCronTokenData();
+    if (data) {
+      return res.json({ configured: true, source: "redis", createdAt: data.createdAt, lastUsedAt: data.lastUsedAt });
+    }
+    res.json({ configured: false, source: "none" });
+  } catch (error) {
+    res.json({ configured: false, source: "none" });
+  }
+});
+
+app.post("/api/settings/cron-token", async (req, res) => {
+  try {
+    if (process.env.CRON_TRIGGER_TOKEN) {
+      return res.status(400).json({ error: "Token is managed via CRON_TRIGGER_TOKEN environment variable — cannot rotate from Settings" });
+    }
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const hash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    await redis.set(REDIS_KEY_CRON_TOKEN, {
+      hash,
+      createdAt: new Date().toISOString(),
+      lastUsedAt: null,
+    });
+    // Return raw token ONCE — it cannot be retrieved again
+    res.json({ ok: true, token: rawToken });
+  } catch (error) {
+    console.error("Error generating cron token:", error);
+    res.status(500).json({ error: "Failed to generate token" });
+  }
+});
+
+app.delete("/api/settings/cron-token", async (req, res) => {
+  try {
+    if (process.env.CRON_TRIGGER_TOKEN) {
+      return res.status(400).json({ error: "Token is managed via CRON_TRIGGER_TOKEN environment variable — cannot revoke from Settings" });
+    }
+    await redis.del(REDIS_KEY_CRON_TOKEN);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error revoking cron token:", error);
+    res.status(500).json({ error: "Failed to revoke token" });
   }
 });
 

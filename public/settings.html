@@ -136,6 +136,28 @@
     </div>
   </div>
 
+  <!-- Automated Weather Refresh -->
+  <div class="card">
+    <h2><span class="icon">⏰</span> Automated Weather Refresh</h2>
+    <p style="font-size:0.85rem;color:#94a3b8;margin-bottom:14px">
+      Use the trigger URL below with a free cron service (like <a href="https://cron-job.org" target="_blank" rel="noopener" style="color:var(--accent)">cron-job.org</a>) to automatically refresh weather data on a schedule — so forecasts are always ready when you open the dashboard.
+    </p>
+    <div class="status-row" id="status-cron"></div>
+    <div id="cron-details" style="margin-top:6px"></div>
+    <div id="cron-url-box" style="display:none;margin-top:12px">
+      <label style="display:block;font-size:0.82rem;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Trigger URL (use as POST request in your cron service)</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="cron-url" readonly style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#fff;font-size:0.82rem;font-family:'Courier New',monospace">
+        <button class="btn btn-secondary" onclick="copyCronUrl()" title="Copy URL">📋 Copy</button>
+      </div>
+      <p style="font-size:0.78rem;color:#f59e0b;margin-top:6px">⚠️ Copy this URL now — the key cannot be shown again after you leave this page.</p>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-gen-cron" onclick="generateCronToken()">Generate Key</button>
+      <button class="btn btn-secondary" id="btn-revoke-cron" onclick="revokeCronToken()" style="display:none">Revoke Key</button>
+    </div>
+  </div>
+
   <!-- System Status -->
   <div class="card">
     <h2><span class="icon">📊</span> System Status</h2>
@@ -222,6 +244,9 @@
       // API key statuses
       renderKeyStatus('meteoblue', s.apiKeys.meteoblue);
       renderKeyStatus('telescopius', s.apiKeys.telescopius);
+
+      // Cron trigger
+      renderCronTrigger(s.cronTrigger);
 
       // Auth
       const dotAuth = document.getElementById('dot-auth');
@@ -326,6 +351,96 @@
       toast(which + ' key updated');
       loadSettings();
     } catch { toast('Failed to save key', true); }
+  }
+
+  function renderCronTrigger(cron) {
+    const el = document.getElementById('status-cron');
+    const det = document.getElementById('cron-details');
+    const urlBox = document.getElementById('cron-url-box');
+    const btnGen = document.getElementById('btn-gen-cron');
+    const btnRevoke = document.getElementById('btn-revoke-cron');
+
+    if (cron.configured) {
+      el.innerHTML = '<span class="status-dot ok"></span> Trigger key active <span class="status-source">(source: ' + escapeHtml(cron.source) + ')</span>';
+      let info = '';
+      if (cron.createdAt) info += 'Created: <span class="val">' + new Date(cron.createdAt).toLocaleString() + '</span>';
+      if (cron.lastUsedAt) info += (info ? ' &middot; ' : '') + 'Last used: <span class="val">' + new Date(cron.lastUsedAt).toLocaleString() + '</span>';
+      det.innerHTML = info ? '<div class="download-info">' + info + '</div>' : '';
+
+      if (cron.source === 'env') {
+        urlBox.style.display = 'none';
+        btnGen.style.display = 'none';
+        btnRevoke.style.display = 'none';
+        det.innerHTML += '<div style="font-size:0.82rem;color:#64748b;margin-top:6px">Managed via <code style="color:#94a3b8">CRON_TRIGGER_TOKEN</code> environment variable. Use your trigger URL: <code style="color:#94a3b8">' + escapeHtml(window.location.origin) + '/api/weather/refresh/trigger?key=YOUR_TOKEN</code></div>';
+      } else {
+        // Don't show URL box on page load (can't reconstruct token from hash)
+        // Only show it right after generation
+        if (!urlBox.dataset.justGenerated) urlBox.style.display = 'none';
+        btnGen.textContent = 'Rotate Key';
+        btnGen.style.display = '';
+        btnRevoke.style.display = '';
+      }
+    } else {
+      el.innerHTML = '<span class="status-dot warn"></span> No trigger key configured';
+      det.innerHTML = '<div style="font-size:0.82rem;color:#64748b">Generate a key to enable automated weather refresh from cron services.</div>';
+      urlBox.style.display = 'none';
+      btnGen.textContent = 'Generate Key';
+      btnGen.style.display = '';
+      btnRevoke.style.display = 'none';
+    }
+  }
+
+  async function generateCronToken() {
+    if (!confirm('Generate a new trigger key? Any existing key will be replaced.')) return;
+    try {
+      const r = await fetch('/api/settings/cron-token', { method: 'POST', credentials: 'include' });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        toast(d.error || 'Failed to generate key', true);
+        return;
+      }
+      const d = await r.json();
+      const url = window.location.origin + '/api/weather/refresh/trigger?key=' + d.token;
+
+      // Show URL in input
+      const urlBox = document.getElementById('cron-url-box');
+      document.getElementById('cron-url').value = url;
+      urlBox.dataset.justGenerated = '1';
+      urlBox.style.display = 'block';
+
+      // Update status inline (avoid loadSettings wiping the URL)
+      document.getElementById('status-cron').innerHTML = '<span class="status-dot ok"></span> Trigger key active <span class="status-source">(source: redis)</span>';
+      document.getElementById('cron-details').innerHTML = '';
+      document.getElementById('btn-gen-cron').textContent = 'Rotate Key';
+      document.getElementById('btn-revoke-cron').style.display = '';
+
+      // Auto-copy
+      try { await navigator.clipboard.writeText(url); toast('Key generated — URL copied to clipboard!'); }
+      catch (_) { toast('Key generated — copy the URL above'); }
+    } catch { toast('Failed to generate key', true); }
+  }
+
+  async function revokeCronToken() {
+    if (!confirm('Revoke the trigger key? Cron jobs using it will stop working.')) return;
+    try {
+      const r = await fetch('/api/settings/cron-token', { method: 'DELETE', credentials: 'include' });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        toast(d.error || 'Failed to revoke key', true);
+        return;
+      }
+      document.getElementById('cron-url-box').style.display = 'none';
+      delete document.getElementById('cron-url-box').dataset.justGenerated;
+      toast('Trigger key revoked');
+      loadSettings();
+    } catch { toast('Failed to revoke key', true); }
+  }
+
+  function copyCronUrl() {
+    const url = document.getElementById('cron-url').value;
+    navigator.clipboard.writeText(url)
+      .then(() => toast('URL copied to clipboard'))
+      .catch(() => toast('Failed to copy', true));
   }
 
   async function refreshWeather() {
