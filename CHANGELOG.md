@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.0](https://github.com/giancarloerra/apd/compare/v1.0.0...v1.1.0) (2026-03-10)
+
+### Features
+
+* add token-authenticated cron trigger for weather refresh ([2343a91](https://github.com/giancarloerra/apd/commit/2343a917361475e1252fa802d808c99b2f53df22))
+
+### Bug Fixes
+
+* accept both GET and POST for cron trigger endpoint ([34491f3](https://github.com/giancarloerra/apd/commit/34491f3a563a91b4de300a1a97c7bf43d8df3bd5))
+* add timeout to geolocation request ([8ed7778](https://github.com/giancarloerra/apd/commit/8ed7778058d538924d374b1b639dba31edf128a6))
+* change cron trigger endpoint from POST to GET for cron service compatibility ([034b869](https://github.com/giancarloerra/apd/commit/034b86931d991d429d7bf517407d115eca4bf01d))
+* make sky chart bottom bar responsive and add FOV rotation slider for narrow screens ([da1c634](https://github.com/giancarloerra/apd/commit/da1c6349497d38ee3fc93258000469eec87df073))
+* warn when weather data belongs to a different location and clearer labels ([7088e0d](https://github.com/giancarloerra/apd/commit/7088e0d13ee80a44543dce1e171322b8cecf9bd2))
+
 ## 1.0.0 (2026-03-09)
 
 ### Features
