@@ -2,7 +2,7 @@
 // Copyright © 2026 Giancarlo Erra — AGPL-3.0-or-later
 
 import { useState, useEffect, useMemo } from "react";
-import { Star, Cloud, CloudSnow, Telescope, Globe, Settings, Home, HelpCircle } from "lucide-react";
+import { Star, Cloud, CloudSnow, Telescope, Globe, Settings, Home, HelpCircle, AlertTriangle } from "lucide-react";
 import { weatherService } from "../services/weatherService";
 import { processWeatherData, processSolarData, getScoreColor, getScoreLabel } from "../utils/weatherUtils";
 import {
@@ -29,6 +29,7 @@ export function Dashboard() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  const [configuredLocation, setConfiguredLocation] = useState<{ lat: number; lon: number } | null>(null);
 
   useEffect(() => {
     // Subscribe to download status updates
@@ -36,6 +37,11 @@ export function Dashboard() {
 
     // Load initial data (with automatic download check)
     loadWeatherData();
+
+    // Fetch configured location to detect mismatches
+    fetch('/api/location').then(r => r.json()).then(loc => {
+      if (loc && typeof loc.lat === 'number') setConfiguredLocation(loc);
+    }).catch(() => {});
 
     return unsubscribe;
   }, []);
@@ -207,6 +213,11 @@ export function Dashboard() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [solarData, metOfficeSolarData]);
 
+  const locationMismatch = weatherData && configuredLocation
+    ? Math.abs(weatherData.metadata.latitude - configuredLocation.lat) > 0.01 ||
+      Math.abs(weatherData.metadata.longitude - configuredLocation.lon) > 0.01
+    : false;
+
   if (isLoading && !weatherData && metOfficeDayData.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
@@ -336,9 +347,9 @@ export function Dashboard() {
                 </p>
               </div>
 
-              <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
+              <div className={`bg-slate-800 border rounded-lg p-6 ${locationMismatch ? 'border-amber-500/60' : 'border-slate-700'}`}>
                 <div className="flex items-center space-x-3 mb-2">
-                  <Globe className="h-6 w-6 text-blue-400" />
+                  <Globe className={`h-6 w-6 ${locationMismatch ? 'text-amber-400' : 'text-blue-400'}`} />
                   <h3 className="text-lg font-semibold text-white">Location</h3>
                 </div>
                 <div className="text-lg font-medium text-white">
@@ -348,6 +359,12 @@ export function Dashboard() {
                 <p className="text-sm text-slate-400 mt-1">
                   Elevation: {weatherData.metadata.height}m
                 </p>
+                {locationMismatch && (
+                  <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-400">
+                    <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>Location changed — <button onClick={handleRefresh} className="underline hover:text-amber-300">refresh</button> to update</span>
+                  </div>
+                )}
               </div>
 
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
@@ -400,7 +417,7 @@ export function Dashboard() {
                         />
                         <div>
                           <span className="text-sm font-semibold text-white">
-                            Best night this week:{" "}
+                            Best night:{" "}
                           </span>
                           <span
                             className={`text-sm font-bold ${getScoreColor(best.score)}`}
@@ -562,7 +579,7 @@ export function Dashboard() {
                           />
                           <div>
                             <span className="text-sm font-semibold text-white">
-                              Best solar day this week:{" "}
+                              Best solar day:{" "}
                             </span>
                             <span
                               className={`text-sm font-bold ${getScoreColor(best.score)}`}
