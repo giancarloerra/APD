@@ -309,25 +309,19 @@
         @media screen and (max-width: 480px) {
             /* Phone: panel overlays full screen from the right, tab always on right edge */
             #ui-panel.open { width: 92vw; min-width: 0; max-width: none; }
-            /* Quick bar: wrap into ~2 rows on narrow screens */
-            #quick-bar {
-                bottom: 6px; padding: 3px 6px; gap: 2px;
-                flex-wrap: wrap; justify-content: center;
-                max-width: 96vw; width: max-content;
-            }
+            /* Tighten quick bar spacing on very narrow screens */
+            #quick-bar { bottom: 6px; padding: 3px 6px; gap: 2px; }
             #quick-bar button { padding: 5px 8px; font-size: 0.78rem; }
             #qb-search { width: 62px; font-size: 0.76rem; padding: 4px 5px; }
             #qb-search:focus { width: 88px; }
-            /* Make vertical separators shorter so they fit in wrapped rows */
             .qb-sep { height: 16px; }
-            /* Hide some separators between groups that end up on same row naturally */
-            #quick-bar .qb-sep:last-of-type { display: none; }
         }
 
         /* ===== QUICK-ACCESS BAR ===== */
         #quick-bar {
             position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
             display: flex; align-items: center; gap: 4px;
+            flex-wrap: wrap; justify-content: center;
             background: rgba(15, 15, 15, 0.9); backdrop-filter: blur(10px);
             border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
             padding: 4px 8px; z-index: 1500;
@@ -367,6 +361,35 @@
         #qb-night.active .qb-icon { color: #ff4444; }
         #qb-fov-lock.active { background: rgba(255,170,0,0.25) !important; color: #ffaa00 !important; border-color: rgba(255,170,0,0.4); }
         #qb-fov-lock.active .qb-icon { color: #ffaa00; }
+
+        /* FOV rotation slider row in quick bar (visible when bar wraps) */
+        .qb-fov-row {
+            width: 100%; order: 999;
+            display: flex;
+            align-items: center; gap: 6px;
+            padding: 2px 4px 0;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            margin-top: 2px;
+        }
+        .qb-fov-row label {
+            font-size: 0.7rem; color: #aaa; white-space: nowrap; margin: 0;
+        }
+        .qb-fov-row input[type="range"] {
+            flex: 1; min-width: 0; height: 4px; -webkit-appearance: none; appearance: none;
+            background: rgba(255,255,255,0.15); border-radius: 2px; outline: none;
+        }
+        .qb-fov-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+            background: var(--accent); cursor: pointer; border: none;
+        }
+        .qb-fov-row input[type="range"]::-moz-range-thumb {
+            width: 14px; height: 14px; border-radius: 50%;
+            background: var(--accent); cursor: pointer; border: none;
+        }
+        .qb-fov-row .qb-rot-val {
+            font-size: 0.7rem; color: #fff; min-width: 28px; text-align: right;
+            font-family: 'Courier New', monospace;
+        }
 
         /* ===== DISCOVER PANEL ===== */
         .discover-section { margin-bottom: 12px; }
@@ -489,6 +512,11 @@
             <div class="qb-group">
                 <button id="qb-fov-lock" title="Lock/Unlock FOV"><svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
                 <button id="qb-fov-center" title="Re-center on locked FOV"><svg class="qb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/></svg></button>
+            </div>
+            <div id="qb-fov-row" class="qb-fov-row">
+                <label>Cam Angle</label>
+                <input type="range" id="qb-rotation-slider" min="0" max="360" step="1" value="0">
+                <span class="qb-rot-val" id="qb-rotation-val">0°</span>
             </div>
         </div>
     </div><!-- /map-area -->
@@ -1235,6 +1263,8 @@
         if (fav.rotation != null) {
             document.getElementById('rotation-slider').value = fav.rotation;
             document.getElementById('rotation-val').innerText = fav.rotation + '°';
+            document.getElementById('qb-rotation-slider').value = fav.rotation;
+            document.getElementById('qb-rotation-val').innerText = fav.rotation + '°';
         }
         if (fav.mosaic) {
             mosaicCols = fav.mosaic.cols;
@@ -1330,7 +1360,7 @@
             if (s.activeFovId) { activeFovId = s.activeFovId; }
 
             // Sliders
-            if (s.rotation != null) { document.getElementById('rotation-slider').value = s.rotation; document.getElementById('rotation-val').innerText = s.rotation + '°'; }
+            if (s.rotation != null) { document.getElementById('rotation-slider').value = s.rotation; document.getElementById('rotation-val').innerText = s.rotation + '°'; document.getElementById('qb-rotation-slider').value = s.rotation; document.getElementById('qb-rotation-val').innerText = s.rotation + '°'; }
             if (s.magSlider != null) { document.getElementById('mag-slider').value = s.magSlider; document.getElementById('mag-limit-val').innerText = parseFloat(s.magSlider).toFixed(1); }
             if (s.nameMagSlider != null) { document.getElementById('name-mag-slider').value = s.nameMagSlider; document.getElementById('name-mag-val').innerText = parseFloat(s.nameMagSlider).toFixed(1); }
             if (s.constOpacity != null) { document.getElementById('const-opacity-slider').value = s.constOpacity; document.getElementById('const-opacity-val').innerText = s.constOpacity + '%'; currentConstOpacity = s.constOpacity / 100; }
@@ -2583,7 +2613,18 @@
     document.getElementById('search-btn').addEventListener('click', () => { let t = document.getElementById('search-input').value; if(t) aladin.gotoObject(t); });
     document.getElementById('search-input').addEventListener('keypress', (e) => { if(e.key === 'Enter') document.getElementById('search-btn').click(); });
     document.getElementById('survey-select').addEventListener('change', (e) => { if(aladin) aladin.setImageSurvey(e.target.value); });
-    document.getElementById('rotation-slider').addEventListener('input', (e) => { document.getElementById('rotation-val').innerText = e.target.value + '°'; });
+    document.getElementById('rotation-slider').addEventListener('input', (e) => {
+        document.getElementById('rotation-val').innerText = e.target.value + '°';
+        // Sync to bottom-bar slider
+        document.getElementById('qb-rotation-slider').value = e.target.value;
+        document.getElementById('qb-rotation-val').innerText = e.target.value + '°';
+    });
+    document.getElementById('qb-rotation-slider').addEventListener('input', (e) => {
+        // Sync to panel slider and display
+        document.getElementById('rotation-slider').value = e.target.value;
+        document.getElementById('rotation-val').innerText = e.target.value + '°';
+        document.getElementById('qb-rotation-val').innerText = e.target.value + '°';
+    });
     document.getElementById('zoom-in').addEventListener('click', () => { let f = aladin.getFov(); aladin.setFov((Array.isArray(f)?f[0]:f)*0.7); });
     document.getElementById('zoom-out').addEventListener('click', () => { let f = aladin.getFov(); aladin.setFov((Array.isArray(f)?f[0]:f)*1.4); });
 
