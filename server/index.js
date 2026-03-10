@@ -297,7 +297,7 @@ async function getCronTokenData() {
   return null;
 }
 
-app.get("/api/weather/refresh/trigger", triggerLimiter, async (req, res) => {
+const triggerHandler = [triggerLimiter, async (req, res) => {
   const key = typeof req.query.key === "string" ? req.query.key : "";
   if (!key) {
     return res.status(401).json({ error: "Missing trigger key" });
@@ -335,7 +335,9 @@ app.get("/api/weather/refresh/trigger", triggerLimiter, async (req, res) => {
     console.error("Cron trigger refresh error:", error);
     res.status(500).json({ error: "Refresh failed" });
   }
-});
+}];
+app.get("/api/weather/refresh/trigger", ...triggerHandler);
+app.post("/api/weather/refresh/trigger", ...triggerHandler);
 
 // ===== PROTECTED ROUTES — everything below requires auth =====
 app.use("/api/*", requireAuth);
