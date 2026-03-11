@@ -27,11 +27,11 @@ I've decided to open source it as I think it could be useful to other astrophoto
 
 ## Table of Contents
 
-- [✨ Features](#-features)
 - [📸 Screenshots](#-screenshots)
+- [🌐 Quick Installation / Deployment (on Render.com)](#-quick-deployment-on-rendercom)
+- [✨ Features](#-features)
 - [🌍 Self-hosting overview](#-self-hosting-overview)
 - [🔑 Required services and API keys](#-required-services-and-api-keys)
-- [🌐 Quick Deployment (on Render.com)](#-quick-deployment-on-rendercom)
 - [🚀 Deployment Guide](#-deployment-guide)
 - [⏰ Automated Weather Refresh](#-automated-weather-refresh)
 - [🆘 Support / hosting help](#-support--hosting-help)
@@ -45,6 +45,64 @@ I've decided to open source it as I think it could be useful to other astrophoto
 - [📁 File Structure](#-file-structure)
 - [🤝 Contributing](#-contributing)
 - [📝 License](#-license)
+
+---
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="screenshots/screenshot_home.png" alt="Home / Landing Page" /><br/><sub>Home / Landing Page</sub></td>
+    <td align="center"><img src="screenshots/screenshot_weather1.png" alt="Weather Dashboard" /><br/><sub>Weather Dashboard (weekly heatmap)</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="screenshots/screenshot_weather2.png" alt="Weather Dashboard" /><br/><sub>Weather Dashboard (hourly details)</sub></td>
+    <td align="center"><img src="screenshots/screenshot_weather3.png" alt="Solar Forecast" /><br/><sub>Solar Forecast</sub></td>
+  </tr>
+  <tr>
+   <td align="center"><img src="screenshots/screenshot_sky1.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard</sub></td>
+   <td align="center"><img src="screenshots/screenshot_sky2.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (camera FOV & mount type)</sub></td>
+  </tr>
+  <tr>
+   <td align="center"><img src="screenshots/screenshot_sky3.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (favourites & objects options)</sub></td>
+   <td align="center"><img src="screenshots/screenshot_sky4.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (Aladin sky DSS and Surveys options)</sub></td>
+  </tr>
+  <tr>
+   <td align="center"><img src="screenshots/screenshot_sky5.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (Telescopius integration: best objects, searching & lists)</sub></td>
+   <td align="center"><img src="screenshots/screenshot_sky6.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (eq/az and overlays view options)</sub></td>
+  </tr>
+</table>
+
+---
+
+## 🌐 Quick Installation / Deployment (on Render.com)
+
+APD is an online self-hosted free app. Instead of signing up on a hosted service, you spin up your own private copy of the app — on a free or cheap cloud platform — and get your own URL to access it.
+
+You can deploy it directly fto Render.com (see next section), or use other cloud platforms like Railway, Fly.io, etc. (see the [Deployment Guide](#-deployment-guide) section).
+
+### Easiest and quickest installation: deploy directly from this repository to Render.com
+
+Render.com lets you deploy straight from this public repository URL — just point it at the address below, set your environment variables, and you're done.
+
+1. Create a free account at [render.com](https://render.com)
+2. Click **New → Web Service**, choose **Connect a repository**, and when prompted paste or search for:
+   `https://github.com/giancarloerra/apd`
+3. Set the following:
+   - **Build command**: `npm ci --include=dev && npm run build`
+   - **Start command**: `npm start`
+4. In the **Environment** tab, add these variables (enter each as a key-value pair, or click **Add from .env** to bulk-import from your local file):
+   - `UPSTASH_REDIS_REST_URL` — from your Upstash dashboard (check [🔑 Required services and API keys](#-required-services-and-api-keys))
+   - `UPSTASH_REDIS_REST_TOKEN` — from your Upstash dashboard (check [🔑 Required services and API keys](#-required-services-and-api-keys))
+   - `METEOBLUE_API_KEY` — from your Meteoblue account (check [🔑 Required services and API keys](#-required-services-and-api-keys))
+   - `MASTER_PASSWORD` — a password to protect your dashboard (recommended)
+   - `TELESCOPIUS_API_KEY` — from your Telescopius account (optional) (check [🔑 Required services and API keys](#-required-services-and-api-keys))
+   - `NODE_ENV=production`
+5. Click **Create Web Service** — Render builds and deploys automatically.
+
+> **⚠️ Security:** If the app is exposed to the internet, **always set `MASTER_PASSWORD`** to a strong, unique password. Without it, anyone who discovers your URL can view your weather data and sky chart, change your API keys, and modify your stored settings. This is the only access control the app has — treat it like the master key to your dashboard.
+
+> **Updates:** Render can auto-deploy whenever this repository releases an update if you authorised the Render GitHub App to access it during setup. Otherwise a one-click manual redeploy is always available from the Render dashboard.
 
 ---
 
@@ -89,49 +147,22 @@ I've decided to open source it as I think it could be useful to other astrophoto
 
 ---
 
-## 📸 Screenshots
-
-<table>
-  <tr>
-    <td align="center"><img src="screenshots/screenshot_home.png" alt="Home / Landing Page" /><br/><sub>Home / Landing Page</sub></td>
-    <td align="center"><img src="screenshots/screenshot_weather1.png" alt="Weather Dashboard" /><br/><sub>Weather Dashboard</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="screenshots/screenshot_weather2.png" alt="Weekly Heatmap" /><br/><sub>Weekly Heatmap</sub></td>
-    <td align="center"><img src="screenshots/screenshot_weather3.png" alt="Solar Forecast" /><br/><sub>Solar Forecast</sub></td>
-  </tr>
-  <tr>
-   <td align="center"><img src="screenshots/screenshot_sky1.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard</sub></td>
-   <td align="center"><img src="screenshots/screenshot_sky2.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard</sub></td>
-  </tr>
-  <tr>
-   <td align="center"><img src="screenshots/screenshot_sky3.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard</sub></td>
-   <td align="center"><img src="screenshots/screenshot_sky4.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard</sub></td>
-  </tr>
-  <tr>
-   <td align="center"><img src="screenshots/screenshot_sky5.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard</sub></td>
-   <td align="center"><img src="screenshots/screenshot_sky6.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard</sub></td>
-  </tr>
-</table>
-
----
-
 ## 🌍 Self-hosting overview
 
 APD is a **self-hosted** app (you can run it locally or privately host it for yourself for remote access). Instead of signing up on a hosted service, you spin up your own private copy of the app — on a free or cheap cloud platform — and get your own URL to access it.
 
-You don't need to own a server or know how to manage infrastructure. Platforms like [Render](https://render.com) make it as simple as linking your GitHub account (another simple and free service), setting a few variables, set the password to protect it (so only you can access it), and clicking Deploy. Your data stays private, you control updates, and there are no subscription fees for the app itself.
+You don't need to own a server or know how to manage infrastructure. Platforms like [Render](https://render.com) make it as simple as linking to a Github repository (another simple and free service), setting a few variables, set the password to protect it (so only you can access it), and clicking Deploy. Your data stays private, you control updates, and there are no subscription fees for the app itself.
 
 ### What you'll need
 
 | Service | What it's for | Cost |
 |---------|---------------|------|
-| **GitHub** | Hosts your copy of the code; cloud platforms deploy from it | Free |
 | **Render** (or similar) | Runs the APD server in the cloud | Free tier available |
 | **Upstash Redis** | Stores your settings: location, camera profiles, favourites, API keys | Free tier available |
 | **Meteoblue API** | Weather forecast data (cloud cover, temperature, wind, etc.) | Free 1-year trial for personal use |
-| **Telescopius API** | Sky Dashboard Discover panel — DSO highlights, target search, observing lists | Patron-only; optional |
-| **cron-job.org** | Triggers weather downloads twice daily (optional but recommended) | Free |
+| **Telescopius API** (Optional) | Sky Dashboard Discover panel — DSO highlights, target search, observing lists | Patron-only |
+| **cron-job.org** (Optional) | Triggers weather downloads twice daily (optional but recommended) | Free |
+| **GitHub** (Optional) | Hosts your copy of the code; cloud platforms deploy from it | Free |
 
 The next section walks through each service and how to get started.
 
@@ -179,39 +210,6 @@ If you don't have a Telescopius key, the sky dashboard still works fully — onl
 ### cron-job.org — optional, free
 
 APD fetches fresh weather data automatically when you open the dashboard, but for proactive twice-daily updates (so the forecast is always ready when you need it), point a free HTTP cron job at your deployed URL. See [Automated Weather Refresh](#-automated-weather-refresh) for the full setup.
-
----
-
-## 🌐 Quick Deployment (on Render.com)
-
-For a detailed deployment guide covering Railway, Fly.io, and self-hosting, see the [Deployment Guide](#-deployment-guide) section below.
-
-### Easiest and quickest: deploy directly from this repo
-
-Render.com lets you deploy straight from this public repository URL — just point it at the address below, set your environment variables, and you're done.
-
-1. Create a free account at [render.com](https://render.com)
-2. Click **New → Web Service**, choose **Connect a repository**, and when prompted paste or search for:
-   `https://github.com/giancarloerra/apd`
-3. Set the following:
-   - **Build command**: `npm ci --include=dev && npm run build`
-   - **Start command**: `npm start`
-4. In the **Environment** tab, add these variables (enter each as a key-value pair, or click **Add from .env** to bulk-import from your local file):
-   - `UPSTASH_REDIS_REST_URL` — from your Upstash dashboard
-   - `UPSTASH_REDIS_REST_TOKEN` — from your Upstash dashboard
-   - `MASTER_PASSWORD` — a password to protect your dashboard (recommended)
-   - `METEOBLUE_API_KEY` — from your Meteoblue account
-   - `TELESCOPIUS_API_KEY` — from your Telescopius account (optional)
-   - `NODE_ENV=production`
-5. Click **Create Web Service** — Render builds and deploys automatically.
-
-> **⚠️ Security:** If the app is exposed to the internet, **always set `MASTER_PASSWORD`** to a strong, unique password. Without it, anyone who discovers your URL can view your weather data and sky chart, change your API keys, and modify your stored settings. This is the only access control the app has — treat it like the master key to your dashboard.
-
-> **Updates:** Render can auto-deploy whenever this repository releases an update if you authorised the Render GitHub App to access it during setup. Otherwise a one-click manual redeploy is always available from the Render dashboard.
-
-### For developers: fork first, then deploy your fork
-
-If you want to customise the code or prevent your instance from auto-updating with upstream changes, fork this repository to your own GitHub account first and connect your fork instead. Clone locally, fill in `.env` from `.env.example`, and run `npm run dev` to develop (see [Local Development](#-local-development)). Every push to your fork's `main` triggers an automatic redeploy. When this repo releases an update, merge it into your fork with a single pull request.
 
 ---
 
