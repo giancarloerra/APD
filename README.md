@@ -29,6 +29,7 @@ I've decided to open source it as I think it could be useful to other astrophoto
 
 - [📸 Screenshots](#-screenshots)
 - [🌐 Quick Installation / Deployment (on Render.com)](#-quick-deployment-on-rendercom)
+- [💻 Quick Installation / Running locally on your computer](#-quick-installation--running-locally-on-your-computer)
 - [✨ Features](#-features)
 - [🌍 Self-hosting overview](#-self-hosting-overview)
 - [🔑 Required services and API keys](#-required-services-and-api-keys)
@@ -103,6 +104,120 @@ Render.com lets you deploy straight from this public repository URL — just poi
 > **⚠️ Security:** If the app is exposed to the internet, **always set `MASTER_PASSWORD`** to a strong, unique password. Without it, anyone who discovers your URL can view your weather data and sky chart, change your API keys, and modify your stored settings. This is the only access control the app has — treat it like the master key to your dashboard.
 
 > **Updates:** Render can auto-deploy whenever this repository releases an update if you authorised the Render GitHub App to access it during setup. Otherwise a one-click manual redeploy is always available from the Render dashboard.
+
+---
+
+## 💻 Quick Installation / Running locally on your computer
+
+You can run APD entirely on your own machine — no cloud hosting needed. This is great if you prefer to run everything local or you're not comfortable with deploying to a cloud platform.
+
+You will still need the external service accounts (Upstash Redis, Meteoblue API key — see [🔑 Required services and API keys](#-required-services-and-api-keys)) because those provide the weather data and database that the app relies on.
+
+### What you need to install first
+
+APD runs on **Node.js** (a free, cross-platform JavaScript runtime). You only need to install it once.
+
+<details>
+<summary><strong>Windows</strong></summary>
+
+1. Download the **Node.js LTS installer** from [nodejs.org](https://nodejs.org/) (the big green button).
+2. Run the installer — accept the defaults and click through.
+3. When finished, open **Command Prompt** (press `Win + R`, type `cmd`, press Enter).
+4. Verify the installation:
+   ```
+   node --version
+   npm --version
+   ```
+   Both commands should print a version number (e.g. `v22.x.x` and `10.x.x`).
+
+</details>
+
+<details>
+<summary><strong>macOS</strong></summary>
+
+1. Download the **Node.js LTS installer** from [nodejs.org](https://nodejs.org/) (the big green button).
+2. Open the downloaded `.pkg` file and follow the prompts.
+3. Open **Terminal** (press `Cmd + Space`, type `Terminal`, press Enter).
+4. Verify the installation:
+   ```
+   node --version
+   npm --version
+   ```
+   Both commands should print a version number.
+
+</details>
+
+<details>
+<summary><strong>Linux (Ubuntu / Debian)</strong></summary>
+
+1. Open a terminal and run:
+   ```bash
+   sudo apt update
+   sudo apt install -y nodejs npm
+   ```
+   If the version is older than 18, use the [NodeSource](https://github.com/nodesource/distributions#installation-instructions) setup instead:
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+   sudo apt install -y nodejs
+   ```
+2. Verify the installation:
+   ```
+   node --version
+   npm --version
+   ```
+
+</details>
+
+### Download and set up APD
+
+1. **Download the app**: go to [github.com/giancarloerra/apd](https://github.com/giancarloerra/apd), click the green **Code** button, then **Download ZIP**. Extract the ZIP to a folder of your choice (e.g. your Desktop or Documents folder).
+
+2. **Open a terminal in that folder**:
+   - **Windows**: open the extracted `apd-main` folder in File Explorer, click in the address bar, type `cmd`, and press Enter.
+   - **macOS**: right-click the `apd-main` folder and choose **New Terminal at Folder** (or open Terminal and type `cd ` followed by dragging the folder into the Terminal window, then press Enter).
+   - **Linux**: right-click the `apd-main` folder and choose **Open in Terminal** (or `cd` to it manually).
+
+3. **Install dependencies** — run this command in the terminal:
+   ```
+   npm install
+   ```
+   This downloads all the libraries APD needs. It may take a minute.
+
+4. **Create your configuration file**: in the `apd-main` folder, find the file called `.env.example`, make a copy of it, and rename the copy to `.env` (just `.env`, nothing else). You can do this from the terminal:
+   - **Windows**: `copy .env.example .env`
+   - **macOS / Linux**: `cp .env.example .env`
+
+5. **Edit the `.env` file** with any text editor (Notepad, TextEdit, etc.) and fill in your values:
+   - `UPSTASH_REDIS_REST_URL` — the REST URL from your Upstash dashboard
+   - `UPSTASH_REDIS_REST_TOKEN` — the REST token from your Upstash dashboard
+   - `METEOBLUE_API_KEY` — your Meteoblue API key
+   - `MASTER_PASSWORD` — optional when running locally; leave blank if you're the only user
+   - `TELESCOPIUS_API_KEY` — optional; only needed for the Sky Dashboard's Discover panel
+
+   Save the file.
+
+### Build and run
+
+Still in the same terminal, run:
+
+```
+npm run build
+npm start
+```
+
+The first command builds the frontend (takes a few seconds). The second starts the server. You should see output like:
+
+```
+Server running on port 3001
+```
+
+Open your browser and go to **http://localhost:3001** — APD is now running on your machine.
+
+### Stopping and restarting
+
+- To **stop** the server, press `Ctrl + C` in the terminal.
+- To **start it again** later, open a terminal in the same folder and run `npm start` (you don't need to rebuild unless the app has been updated).
+- To **update** to a newer version, download the latest ZIP from GitHub, extract it over the same folder, run `npm install` to pick up any new dependencies, then `npm run build` and `npm start`.
 
 ---
 
@@ -688,3 +803,17 @@ This means:
 - You can use, copy, modify, and distribute this software freely.
 - If you run a modified version on a server and users interact with it over a network, you **must** make the modified source code available to those users.
 - Any project that incorporates this code **must** also be released under AGPL-3.0-or-later.
+
+### Third-party notices
+
+APD includes or links to the following third-party components, each under its own license:
+
+| Component | License | Notes |
+|-----------|---------|-------|
+| [Aladin Lite v3](https://github.com/cds-astro/aladin-lite) | GPL-3.0 | Loaded from CDS servers; compatible with AGPL-3.0 per §13 of both licenses |
+| [d3-celestial](https://github.com/ofrohn/d3-celestial) data files | BSD-3-Clause | Star, constellation, and DSO catalog data bundled in `public/data/celestial/` |
+| [Lucide](https://lucide.dev/) icons | ISC | Icon library used in the React frontend |
+| [Google Fonts — Inter](https://fonts.google.com/specimen/Inter) | SIL Open Font License 1.1 | Loaded from Google Fonts CDN |
+| SDO/HMI solar imagery | Public domain | Hotlinked from [Stanford JSOC](https://jsoc1.stanford.edu); NASA/SDO data is in the public domain |
+
+All npm dependencies (React, Express, Tailwind CSS, etc.) are licensed under MIT or ISC — see each package's own LICENSE file for details.
