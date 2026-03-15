@@ -760,6 +760,11 @@
                             <label><input type="checkbox" id="chk-dso-ngc"> NGC</label>
                             <label><input type="checkbox" id="chk-dso-ic" checked> IC</label>
                             <label><input type="checkbox" id="chk-dso-ldn" checked> LDN/B</label>
+                            <label><input type="checkbox" id="chk-dso-sh2"> SH2</label>
+                            <label><input type="checkbox" id="chk-dso-lbn"> LBN</label>
+                            <label><input type="checkbox" id="chk-dso-vdb"> vdB</label>
+                            <label><input type="checkbox" id="chk-dso-hcg"> HCG</label>
+                            <label><input type="checkbox" id="chk-dso-abell"> Abell PNe</label>
                         </div>
                     </div>
                     <div class="control-group">
@@ -782,6 +787,7 @@
                     </div>
                     <div style="font-size: 0.9rem;">
                         <label class="overlay-row"><input type="checkbox" id="chk-dso-nullmag"> Unknown magnitude</label>
+                        <div style="font-size:0.7rem;color:#666;margin-top:2px;padding-left:22px;">For NGC/IC objects missing mag data.<br>Abell, HCG, LBN, SH2 always bypass this filter.</div>
                     </div>
                 </div>
             </div>
@@ -1043,6 +1049,9 @@
         planetary: ['pn']
     };
 
+    // Catalogs that inherently lack visual magnitude data — bypass the mag filter
+    const NO_MAG_CATALOGS = new Set(['abell', 'hcg', 'lbn', 'sh2']);
+
     function dsoTypeClass(type) {
         if (['g','e','s','s0','sd','i','gg'].includes(type)) return 'dso-gx';
         if (['bn','en','rn','sfr','snr'].includes(type)) return 'dso-nb';
@@ -1060,6 +1069,11 @@
         if (/\bNGC\s?\d/i.test(text)) cats.push('ngc');
         if (/\bIC\s?\d/i.test(text)) cats.push('ic');
         if (/\bLDN\s?\d/i.test(text) || /\bB\s\d/i.test(text)) cats.push('ldn');
+        if (/\bSH2-/i.test(text)) cats.push('sh2');
+        if (/\bLBN\s?\d/i.test(text)) cats.push('lbn');
+        if (/\bvdB\s?\d/i.test(text)) cats.push('vdb');
+        if (/\bHCG\s?\d/i.test(text)) cats.push('hcg');
+        if (/\bAbell\s?\d/i.test(text)) cats.push('abell');
         return cats;
     }
 
@@ -1071,6 +1085,16 @@
         if (ngc) return ngc[1];
         let ic = d.match(/\b(IC\s?\d+)\b/i);
         if (ic) return ic[1];
+        let sh2 = d.match(/\b(SH2-\d+)\b/i);
+        if (sh2) return sh2[1];
+        let lbn = d.match(/\b(LBN\s?\d+)\b/i);
+        if (lbn) return lbn[1];
+        let vdb = d.match(/\b(vdB\s?\d+)\b/i);
+        if (vdb) return vdb[1];
+        let hcg = d.match(/\b(HCG\s?\d+)\b/i);
+        if (hcg) return hcg[1];
+        let abell = d.match(/\b(Abell\s?\d+)\b/i);
+        if (abell) return abell[1];
         let ldn = d.match(/\b(LDN\s?\d+)\b/i);
         if (ldn) return ldn[1];
         let barn = d.match(/\b(B\s\d+)\b/i);
@@ -1321,6 +1345,11 @@
                 chkDsoNGC: document.getElementById('chk-dso-ngc').checked,
                 chkDsoIC: document.getElementById('chk-dso-ic').checked,
                 chkDsoLDN: document.getElementById('chk-dso-ldn').checked,
+                chkDsoSH2: document.getElementById('chk-dso-sh2').checked,
+                chkDsoLBN: document.getElementById('chk-dso-lbn').checked,
+                chkDsoVdB: document.getElementById('chk-dso-vdb').checked,
+                chkDsoHCG: document.getElementById('chk-dso-hcg').checked,
+                chkDsoAbell: document.getElementById('chk-dso-abell').checked,
                 chkDsoGalaxies: document.getElementById('chk-dso-galaxies').checked,
                 chkDsoNebulae: document.getElementById('chk-dso-nebulae').checked,
                 chkDsoDark: document.getElementById('chk-dso-dark').checked,
@@ -1392,6 +1421,11 @@
             if (s.chkDsoNGC != null) document.getElementById('chk-dso-ngc').checked = s.chkDsoNGC;
             if (s.chkDsoIC != null) document.getElementById('chk-dso-ic').checked = s.chkDsoIC;
             if (s.chkDsoLDN != null) document.getElementById('chk-dso-ldn').checked = s.chkDsoLDN;
+            if (s.chkDsoSH2 != null) document.getElementById('chk-dso-sh2').checked = s.chkDsoSH2;
+            if (s.chkDsoLBN != null) document.getElementById('chk-dso-lbn').checked = s.chkDsoLBN;
+            if (s.chkDsoVdB != null) document.getElementById('chk-dso-vdb').checked = s.chkDsoVdB;
+            if (s.chkDsoHCG != null) document.getElementById('chk-dso-hcg').checked = s.chkDsoHCG;
+            if (s.chkDsoAbell != null) document.getElementById('chk-dso-abell').checked = s.chkDsoAbell;
             if (s.chkDsoGalaxies != null) document.getElementById('chk-dso-galaxies').checked = s.chkDsoGalaxies;
             if (s.chkDsoNebulae != null) document.getElementById('chk-dso-nebulae').checked = s.chkDsoNebulae;
             if (s.chkDsoDark != null) document.getElementById('chk-dso-dark').checked = s.chkDsoDark;
@@ -1773,12 +1807,13 @@
 
         try {
             const BASE = '/data/celestial/';
-            const [starsResp, starNamesResp, linesResp, constNamesResp, dsosResp] = await Promise.all([
+            const [starsResp, starNamesResp, linesResp, constNamesResp, dsosResp, extraResp] = await Promise.all([
                 fetch(BASE + 'stars.14.json'),
                 fetch(BASE + 'starnames.json'),
                 fetch(BASE + 'constellations.lines.json'),
                 fetch(BASE + 'constellations.json'),
-                fetch(BASE + 'dsos.14.json')
+                fetch(BASE + 'dsos.14.json'),
+                fetch(BASE + 'catalogs_extra.json')
             ]);
             if (!starsResp.ok || !starNamesResp.ok || !linesResp.ok || !constNamesResp.ok)
                 throw new Error('HTTP fetch failed');
@@ -1788,6 +1823,11 @@
             const linesGeo = await linesResp.json();
             const constNamesGeo = await constNamesResp.json();
             const dsosGeo = dsosResp.ok ? await dsosResp.json() : { features: [] };
+            const extraGeo = extraResp.ok ? await extraResp.json() : { features: [] };
+            // Merge extra catalogs into DSO data
+            if (extraGeo.features && extraGeo.features.length > 0) {
+                dsosGeo.features = dsosGeo.features.concat(extraGeo.features);
+            }
 
             function lon2ra(lon) { return lon < 0 ? lon + 360 : lon; }
 
@@ -2447,6 +2487,11 @@
                 let catNGC = document.getElementById('chk-dso-ngc').checked;
                 let catIC = document.getElementById('chk-dso-ic').checked;
                 let catLDN = document.getElementById('chk-dso-ldn').checked;
+                let catSH2 = document.getElementById('chk-dso-sh2').checked;
+                let catLBN = document.getElementById('chk-dso-lbn').checked;
+                let catVdB = document.getElementById('chk-dso-vdb').checked;
+                let catHCG = document.getElementById('chk-dso-hcg').checked;
+                let catAbell = document.getElementById('chk-dso-abell').checked;
                 let typeGx = document.getElementById('chk-dso-galaxies').checked;
                 let typeNb = document.getElementById('chk-dso-nebulae').checked;
                 let typeDn = document.getElementById('chk-dso-dark').checked;
@@ -2460,9 +2505,15 @@
                     let catOk = (catM && lbl.catalogs.includes('m')) ||
                                 (catNGC && lbl.catalogs.includes('ngc')) ||
                                 (catIC && lbl.catalogs.includes('ic')) ||
-                                (catLDN && lbl.catalogs.includes('ldn'));
+                                (catLDN && lbl.catalogs.includes('ldn')) ||
+                                (catSH2 && lbl.catalogs.includes('sh2')) ||
+                                (catLBN && lbl.catalogs.includes('lbn')) ||
+                                (catVdB && lbl.catalogs.includes('vdb')) ||
+                                (catHCG && lbl.catalogs.includes('hcg')) ||
+                                (catAbell && lbl.catalogs.includes('abell'));
                     let typeOk = lbl.typeGroup && typeMap[lbl.typeGroup];
-                    let magOk = lbl.mag === null ? showNullMag : lbl.mag <= dsoMagLim;
+                    let inNoMagCat = lbl.catalogs.some(c => NO_MAG_CATALOGS.has(c));
+                    let magOk = inNoMagCat || (lbl.mag === null ? showNullMag : lbl.mag <= dsoMagLim);
                     if (catOk && typeOk && magOk) {
                         positionLabel(lbl.el, lbl.ra, lbl.dec, size, 10, -4);
                     } else {

@@ -70,7 +70,11 @@ I've decided to open source it as I think it could be useful to other astrophoto
   </tr>
   <tr>
    <td align="center"><img src="screenshots/screenshot_sky5.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (Telescopius integration: best objects, searching & lists)</sub></td>
-   <td align="center"><img src="screenshots/screenshot_sky6.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (eq/az and overlays view options)</sub></td>
+   <td align="center"><img src="screenshots/screenshot_sky6.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (EQ/AZ mounts and overlays view options)</sub></td>
+  </tr>
+  <tr>
+   <td align="center"><img src="screenshots/screenshot_sky7.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (All the supported DSO catalogues)</sub></td>
+   <td align="center"><img src="screenshots/screenshot_sky8.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (Natural visual colours survey)</sub></td>
   </tr>
 </table>
 
@@ -463,7 +467,7 @@ APD requires a few third-party accounts and some technical setup. If you need he
 - **Weather Dashboard**: React 18 + TypeScript + Tailwind CSS (Vite build)
 - **Sky Dashboard**: Self-contained HTML page with Aladin Lite v3.6.5 sky viewer, jQuery 3.7.1 (Aladin dependency)
 - **Icons**: Lucide React
-- **Celestial data**: Star, constellation, and DSO data from [d3-celestial](https://github.com/ofrohn/d3-celestial) (bundled locally in `public/data/celestial/`)
+- **Celestial data**: Star, constellation, and DSO data from [d3-celestial](https://github.com/ofrohn/d3-celestial) plus additional catalogs (SH2, LBN, vdB, HCG, Abell PNe) from [VizieR/CDS](https://vizier.cds.unistra.fr/) (bundled locally in `public/data/celestial/`)
 - **Astronomy calculations**: Simplified VSOP87/Meeus for planet positions, moon position and phase — approximate, optimised for visual display rather than astrometric precision
 - **Sky Dashboard persistence**: UI settings (panel state, sliders, toggles) stored in `localStorage` (`astro-sky-dashboard-v1`); FOVs and favorites stored in Redis via the API
 
@@ -763,7 +767,7 @@ apd/
 │   ├── settings.html               # Settings page (location, API keys, system status)
 │   ├── theme.css                   # Shared CSS theme (accent colour tokens)
 │   ├── logo.png                    # App logo / favicon
-│   └── data/celestial/             # Star, constellation & DSO data (from d3-celestial)
+│   └── data/celestial/             # Star, constellation & DSO data (d3-celestial + VizieR catalogs)
 ├── screenshots/                    # README screenshots
 ├── .github/
 │   ├── workflows/
@@ -812,6 +816,7 @@ APD includes or links to the following third-party components, each under its ow
 |-----------|---------|-------|
 | [Aladin Lite v3](https://github.com/cds-astro/aladin-lite) | GPL-3.0 | Loaded from CDS servers; compatible with AGPL-3.0 per §13 of both licenses |
 | [d3-celestial](https://github.com/ofrohn/d3-celestial) data files | BSD-3-Clause | Star, constellation, and DSO catalog data bundled in `public/data/celestial/` |
+| VizieR/CDS extra catalogs | Public astronomical data | SH2 (Sharpless 1959), LBN (Lynds 1965), B (Barnard 1927), LDN (Lynds 1962), vdB (van den Bergh 1966), HCG (Hickson 1993), Abell PNe (Acker+ 1992) — sourced from [VizieR, CDS Strasbourg](https://vizier.cds.unistra.fr/) and bundled in `public/data/celestial/catalogs_extra.json` |
 | [Lucide](https://lucide.dev/) icons | ISC | Icon library used in the React frontend |
 | [Google Fonts — Inter](https://fonts.google.com/specimen/Inter) | SIL Open Font License 1.1 | Loaded from Google Fonts CDN |
 | SDO/HMI solar imagery | Public domain | Hotlinked from [Stanford JSOC](https://jsoc1.stanford.edu); NASA/SDO data is in the public domain |
