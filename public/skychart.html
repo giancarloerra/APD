@@ -1282,6 +1282,7 @@
             document.getElementById('qb-rotation-slider').value = fav.rotation;
             document.getElementById('qb-rotation-val').innerText = fav.rotation + '°';
         }
+        lockFovOnTarget(fav.ra, fav.dec, fav.rotation);
         if (fav.mosaic) {
             mosaicCols = fav.mosaic.cols;
             mosaicRows = fav.mosaic.rows;
@@ -2656,7 +2657,7 @@
         setTimeout(() => window.dispatchEvent(new Event('resize')), 320);
     });
 
-    document.getElementById('search-btn').addEventListener('click', () => { let t = document.getElementById('search-input').value; if(t) aladin.gotoObject(t); });
+    document.getElementById('search-btn').addEventListener('click', () => { let t = document.getElementById('search-input').value; if(t) { aladin.gotoObject(t); lockFovAfterGoto(); } });
     document.getElementById('search-input').addEventListener('keypress', (e) => { if(e.key === 'Enter') document.getElementById('search-btn').click(); });
     document.getElementById('survey-select').addEventListener('change', (e) => { if(aladin) aladin.setImageSurvey(e.target.value); });
     document.getElementById('rotation-slider').addEventListener('input', (e) => {
@@ -2705,7 +2706,7 @@
     // ===== QUICK-BAR BINDINGS =====
     document.getElementById('qb-search-btn').addEventListener('click', () => {
         let t = document.getElementById('qb-search').value.trim();
-        if (t && aladin) { aladin.gotoObject(t); document.getElementById('qb-search').value = ''; }
+        if (t && aladin) { aladin.gotoObject(t); document.getElementById('qb-search').value = ''; lockFovAfterGoto(); }
     });
     document.getElementById('qb-search').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') document.getElementById('qb-search-btn').click();
@@ -2725,6 +2726,32 @@
         syncQuickBar();
         debouncedSave();
     });
+
+    // Auto-lock FOV on a target position, resetting rotation if none provided
+    function lockFovOnTarget(ra, dec, rotation) {
+        let box = document.getElementById('camera-fov-box');
+        let icon = document.getElementById('fov-lock-icon');
+        fovLocked = true;
+        fovLockedRaDec = [ra, dec];
+        box.classList.add('fov-locked');
+        icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M18 10h-1V7A5 5 0 0 0 7 7v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2zM9 7a3 3 0 0 1 6 0v3H9V7zm4 10.5a1.5 1.5 0 0 1-3 0v-3a1.5 1.5 0 0 1 3 0v3z"/></svg>';
+        if (rotation == null) {
+            document.getElementById('rotation-slider').value = 0;
+            document.getElementById('rotation-val').innerText = '0°';
+            document.getElementById('qb-rotation-slider').value = 0;
+            document.getElementById('qb-rotation-val').innerText = '0°';
+        }
+        syncQuickBar();
+        debouncedSave();
+    }
+
+    // Auto-lock after gotoObject resolves (name-based navigation)
+    function lockFovAfterGoto() {
+        setTimeout(() => {
+            let radec = aladin.getRaDec();
+            if (radec) lockFovOnTarget(radec[0], radec[1], null);
+        }, 1500);
+    }
 
     // FOV lock toggle — click FOV box to lock/unlock
     function toggleFovLock() {
@@ -3133,8 +3160,10 @@
                 let name = card.dataset.name;
                 if (!isNaN(ra) && !isNaN(dec) && aladin) {
                     aladin.gotoRaDec(ra, dec);
+                    lockFovOnTarget(ra, dec, null);
                 } else if (name && aladin) {
                     aladin.gotoObject(name);
+                    lockFovAfterGoto();
                 }
             });
         });
@@ -3169,8 +3198,10 @@
                 let name = card.dataset.name;
                 if (!isNaN(ra) && !isNaN(dec) && aladin) {
                     aladin.gotoRaDec(ra, dec);
+                    lockFovOnTarget(ra, dec, null);
                 } else if (name && aladin) {
                     aladin.gotoObject(name);
+                    lockFovAfterGoto();
                 }
             });
         });
