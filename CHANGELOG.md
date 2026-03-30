@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.3.0](https://github.com/giancarloerra/apd/compare/v1.2.0...v1.3.0) (2026-03-30)
+
+### Features
+
+* auto-lock FOV when navigating to objects ([0b867a2](https://github.com/giancarloerra/apd/commit/0b867a20f9ce6b7e79e4de726398d12bb956f3d6))
+* implement fov and skychart together in one mode, with horizon toggle functionality and UI updates ([80c4629](https://github.com/giancarloerra/apd/commit/80c46292a598e0ab818d6d4df0c16a6340c413e4))
+
+### Bug Fixes
+
+* pinch wheel dampen factor adjusted ([a6136de](https://github.com/giancarloerra/apd/commit/a6136dec4b8ad9d49d9951efa4c7c33993c3aeeb))
+
 ## [1.2.0](https://github.com/giancarloerra/apd/compare/v1.1.1...v1.2.0) (2026-03-15)
 
 ### Features
