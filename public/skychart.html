@@ -437,6 +437,29 @@
             cursor: pointer; transition: 0.15s; line-height: 1;
         }
         .discover-card .dc-actions button:hover { background: rgba(var(--accent-rgb),0.2); color: var(--accent); }
+        .discover-card .dc-curve {
+            margin-top: 3px; display: block; width: 100%; height: 32px;
+        }
+        .discover-card .dc-curve-axis {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 0.6rem; color: #777; font-family: 'Courier New', monospace;
+            line-height: 1; margin-top: 1px;
+        }
+        .discover-card .dc-curve-axis .dc-axis-c { color: #888; }
+        .discover-card .dc-curve-meta {
+            font-size: 0.65rem; color: #aaa; margin-top: 2px; font-family: 'Courier New', monospace;
+        }
+        /* Visibility filter bar */
+        .vis-filter-bar {
+            display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center;
+            padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08);
+            margin-bottom: 10px; font-size: 0.75rem; color: #aaa;
+        }
+        .vis-filter-bar label { color: #888; }
+        .vis-filter-bar select {
+            background: #1e1e1e; color: #ddd; border: 1px solid #444;
+            border-radius: 3px; padding: 3px 5px; font-size: 0.75rem;
+        }
         .discover-empty {
             text-align: center; color: #666; font-size: 0.8rem; padding: 16px 8px;
         }
@@ -802,6 +825,29 @@
                     <!-- Solar system times -->
                     <div id="solar-times-container" class="solar-times-bar">
                         <span class="discover-loading" id="solar-times-loading">Load solar data…</span>
+                    </div>
+
+                    <!-- Visibility filter (native; applies to all Discover sections) -->
+                    <div class="vis-filter-bar" title="Filters targets by their altitude curve during astronomical night (computed natively for your location).">
+                        <label>Alt ≥</label>
+                        <select id="vis-min-alt">
+                            <option value="0">Any</option>
+                            <option value="20">20°</option>
+                            <option value="30">30°</option>
+                            <option value="40">40°</option>
+                            <option value="50">50°</option>
+                            <option value="60">60°</option>
+                        </select>
+                        <label>for ≥</label>
+                        <select id="vis-min-hours">
+                            <option value="0">Any</option>
+                            <option value="1">1 h</option>
+                            <option value="2">2 h</option>
+                            <option value="3">3 h</option>
+                            <option value="4">4 h</option>
+                            <option value="5">5 h</option>
+                            <option value="6">6 h</option>
+                        </select>
                     </div>
 
                     <!-- Tonight's Highlights -->
@@ -1518,6 +1564,115 @@
         let rad = Math.PI / 180;
         let H = (lst - ra) * rad, phi = lat * rad, d = dec * rad;
         return Math.atan2(Math.sin(H), Math.tan(phi) * Math.cos(d) - Math.sin(d) * Math.cos(H)) / rad;
+    }
+
+    // Low-precision sun RA/Dec (~1 arcmin), sufficient for twilight boundaries.
+    function sunRaDec(jd) {
+        let n = jd - 2451545.0;
+        let L = ((280.460 + 0.9856474 * n) % 360 + 360) % 360;
+        let g = ((357.528 + 0.9856003 * n) % 360) * Math.PI / 180;
+        let lambda = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * Math.PI / 180;
+        let eps = (23.439 - 0.0000004 * n) * Math.PI / 180;
+        let ra = Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda)) * 180 / Math.PI;
+        if (ra < 0) ra += 360;
+        let dec = Math.asin(Math.sin(eps) * Math.sin(lambda)) * 180 / Math.PI;
+        return [ra, dec];
+    }
+
+    function sunAltAt(date, lat, lon) {
+        let jd = getJD(date);
+        let lst = getLST(jd, lon);
+        let [ra, dec] = sunRaDec(jd);
+        return raDecToAltAz(ra, dec, lat, lst)[0];
+    }
+
+    // Astronomical night window containing or following refDate.
+    // Returns {dusk, dawn} (Date) when sun alt crosses -18°, or null if none.
+    function getAstroNight(refDate, lat, lon) {
+        let start = new Date(refDate);
+        start.setHours(12, 0, 0, 0);
+        const stepMs = 5 * 60 * 1000;
+        const maxSteps = (24 * 60) / 5;
+        let prevT = start;
+        let prevAlt = sunAltAt(prevT, lat, lon);
+        let dusk = null, dawn = null;
+        for (let i = 1; i <= maxSteps; i++) {
+            let curT = new Date(start.getTime() + i * stepMs);
+            let curAlt = sunAltAt(curT, lat, lon);
+            if (!dusk && prevAlt > -18 && curAlt <= -18) {
+                let frac = (prevAlt - (-18)) / (prevAlt - curAlt);
+                dusk = new Date(prevT.getTime() + frac * stepMs);
+            } else if (dusk && !dawn && prevAlt <= -18 && curAlt > -18) {
+                let frac = ((-18) - prevAlt) / (curAlt - prevAlt);
+                dawn = new Date(prevT.getTime() + frac * stepMs);
+                break;
+            }
+            prevT = curT; prevAlt = curAlt;
+        }
+        if (!dusk || !dawn) return null;
+        return { dusk, dawn };
+    }
+
+    let _astroNightCache = null;
+    function getCachedAstroNight() {
+        let t = getObsTime();
+        let dayKey = `${t.toDateString()}_${obsLat.toFixed(3)}_${obsLon.toFixed(3)}`;
+        if (_astroNightCache && _astroNightCache.key === dayKey) return _astroNightCache.val;
+        let val = getAstroNight(t, obsLat, obsLon);
+        _astroNightCache = { key: dayKey, val };
+        return val;
+    }
+
+    function invalidateAstroNightCache() { _astroNightCache = null; }
+
+    // Sample target altitude + azimuth across astronomical night. Returns null if no astro night.
+    function computeAltCurve(raDeg, decDeg, n = 60) {
+        let night = getCachedAstroNight();
+        if (!night || raDeg == null || decDeg == null) return null;
+        let { dusk, dawn } = night;
+        let dur = dawn.getTime() - dusk.getTime();
+        let samples = new Array(n + 1);
+        let maxAlt = -90, maxIdx = 0;
+        for (let i = 0; i <= n; i++) {
+            let t = new Date(dusk.getTime() + (i / n) * dur);
+            let lst = getLST(getJD(t), obsLon);
+            let [alt, az] = raDecToAltAz(raDeg, decDeg, obsLat, lst);
+            samples[i] = { t, alt, az };
+            if (alt > maxAlt) { maxAlt = alt; maxIdx = i; }
+        }
+        return { samples, maxAlt, maxIdx, dusk, dawn };
+    }
+
+    function curveMaxAlt(curve) {
+        return curve ? curve.maxAlt : -90;
+    }
+
+    // 8-point cardinal bearing for an azimuth in degrees (0=N, 90=E).
+    function azToCardinal(az) {
+        if (az == null || isNaN(az)) return '';
+        let a = ((az % 360) + 360) % 360;
+        const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        return dirs[Math.round(a / 45) % 8];
+    }
+
+    // Cumulative hours during night where alt >= thresholdDeg (linear interp across samples).
+    function hoursAboveAlt(curve, thresholdDeg) {
+        if (!curve || !curve.samples.length) return 0;
+        let s = curve.samples;
+        let totalMs = 0;
+        for (let i = 1; i < s.length; i++) {
+            let a = s[i - 1], b = s[i];
+            let segMs = b.t - a.t;
+            let aAbove = a.alt >= thresholdDeg, bAbove = b.alt >= thresholdDeg;
+            if (aAbove && bAbove) {
+                totalMs += segMs;
+            } else if (aAbove && !bAbove) {
+                totalMs += segMs * (a.alt - thresholdDeg) / (a.alt - b.alt);
+            } else if (!aAbove && bAbove) {
+                totalMs += segMs * (b.alt - thresholdDeg) / (b.alt - a.alt);
+            }
+        }
+        return totalMs / 3600000;
     }
 
     function getViewRotation() {
@@ -2642,8 +2797,18 @@
         document.getElementById('time-display').innerHTML = `STATIC: ${manualTime.toLocaleString()}`;
         document.getElementById('time-display').style.color = '#ffaa00';
         syncQuickBar();
+        if (typeof recomputeAllAltCurves === 'function') {
+            recomputeAllAltCurves();
+            if (typeof reRenderAllDiscover === 'function') reRenderAllDiscover();
+        }
     }
-    function setTimeNow() { isTimeNow = true; clockTick(); }
+    function setTimeNow() {
+        isTimeNow = true; clockTick();
+        if (typeof recomputeAllAltCurves === 'function') {
+            recomputeAllAltCurves();
+            if (typeof reRenderAllDiscover === 'function') reRenderAllDiscover();
+        }
+    }
 
     // ===== UI EVENT BINDINGS =====
     // input-lat / input-lon are now hidden; location is edited in Settings page only
@@ -2810,7 +2975,27 @@
     let discoverHighlights = [];   // raw highlights data
     let discoverFilter = 'all';    // current filter chip
     let telescopiusListTargets = []; // targets from selected list
+    let discoverSearchResults = []; // last search results
     let discoverSearchDebounce = null;
+
+    // Native visibility filter (alt + cumulative hours, computed from target altCurve)
+    function getVisibilityFilter() {
+        let altEl = document.getElementById('vis-min-alt');
+        let hrEl = document.getElementById('vis-min-hours');
+        let minAlt = altEl ? parseFloat(altEl.value) || 0 : 0;
+        let minHours = hrEl ? parseFloat(hrEl.value) || 0 : 0;
+        return { minAlt, minHours };
+    }
+    function applyVisibilityFilter(objs) {
+        let { minAlt, minHours } = getVisibilityFilter();
+        if (minAlt <= 0 && minHours <= 0) return objs;
+        return objs.filter(o => {
+            if (!o || !o.altCurve) return true; // no coords / no astro night → don't hide
+            if (minAlt > 0 && curveMaxAlt(o.altCurve) < minAlt) return false;
+            if (minHours > 0 && hoursAboveAlt(o.altCurve, Math.max(minAlt, 0)) < minHours) return false;
+            return true;
+        });
+    }
 
     function applyTelescopiusNotConfiguredState() {
         document.getElementById('discover-not-configured-notice').style.display = 'block';
@@ -2901,7 +3086,7 @@
                     if (pd && pd.page_results) allRaw = allRaw.concat(pd.page_results);
                 });
             }
-            discoverHighlights = allRaw.map(normalizeTarget);
+            discoverHighlights = attachAltCurves(allRaw.map(normalizeTarget));
             renderHighlights();
         } catch (e) {
             container.innerHTML = '<div class="discover-error">' + escapeHtml(e.message) + '</div>';
@@ -2913,11 +3098,12 @@
         let filtered = discoverHighlights;
         if (discoverFilter !== 'all') {
             let types = discoverFilter.split(',');
-            filtered = discoverHighlights.filter(obj => {
+            filtered = filtered.filter(obj => {
                 let t = (obj.types || obj.type || '').toLowerCase();
                 return types.some(ft => t.includes(ft));
             });
         }
+        filtered = applyVisibilityFilter(filtered);
         let container = document.getElementById('highlights-list');
         if (filtered.length === 0) {
             container.innerHTML = discoverHighlights.length > 0
@@ -2940,6 +3126,17 @@
         renderHighlights();
     });
 
+    // Visibility filter (applies to all Discover sections)
+    function reRenderAllDiscover() {
+        if (discoverHighlights.length) renderHighlights();
+        if (discoverSearchResults.length) renderSearchResults();
+        if (telescopiusListTargets.length) renderTelescopiusList();
+    }
+    ['vis-min-alt', 'vis-min-hours'].forEach(id => {
+        let el = document.getElementById(id);
+        if (el) el.addEventListener('change', reRenderAllDiscover);
+    });
+
     // --- Telescopius Search ---
     async function telescopiusSearch() {
         let query = document.getElementById('telescopius-search-input').value.trim();
@@ -2960,16 +3157,29 @@
             if (!resp.ok) throw new Error('API error ' + resp.status);
             let data = await resp.json();
             let raw = data.page_results || data.objects || data.results || [];
-            let objects = raw.map(normalizeTarget);
-            if (objects.length === 0) {
-                container.innerHTML = '<div class="discover-empty">No results found</div>';
-            } else {
-                container.innerHTML = objects.map(obj => renderDiscoverCard(obj)).join('');
-                bindDiscoverCardActions(container);
-            }
+            discoverSearchResults = attachAltCurves(raw.map(normalizeTarget));
+            renderSearchResults();
         } catch (e) {
             container.innerHTML = '<div class="discover-error">' + escapeHtml(e.message) + '</div>';
         }
+    }
+
+    function renderSearchResults() {
+        let container = document.getElementById('search-results-list');
+        if (!discoverSearchResults.length) {
+            container.innerHTML = '<div class="discover-empty">No results found</div>';
+            return;
+        }
+        let filtered = applyVisibilityFilter(discoverSearchResults);
+        if (!filtered.length) {
+            container.innerHTML = `<div class="discover-empty">No results match visibility filter (${discoverSearchResults.length} hidden)</div>`;
+            return;
+        }
+        let countHtml = filtered.length < discoverSearchResults.length
+            ? `<div style="font-size:0.7rem;color:rgba(255,255,255,0.5);margin-bottom:4px;">${filtered.length} of ${discoverSearchResults.length} results</div>`
+            : '';
+        container.innerHTML = countHtml + filtered.map(obj => renderDiscoverCard(obj)).join('');
+        bindDiscoverCardActions(container);
     }
 
     document.getElementById('telescopius-search-input').addEventListener('keypress', (e) => {
@@ -3013,13 +3223,11 @@
             if (!resp.ok) throw new Error('API error ' + resp.status);
             let data = await resp.json();
             let raw = data.objects || data.targets || data.page_results || [];
-            telescopiusListTargets = raw.map(normalizeTarget);
+            telescopiusListTargets = attachAltCurves(raw.map(normalizeTarget));
+            renderTelescopiusList();
             if (telescopiusListTargets.length === 0) {
-                container.innerHTML = '<div class="discover-empty">Empty list</div>';
                 importBtn.style.display = 'none';
             } else {
-                container.innerHTML = telescopiusListTargets.map(obj => renderDiscoverCard(obj)).join('');
-                bindDiscoverCardActions(container);
                 importBtn.style.display = '';
             }
         } catch (e) {
@@ -3027,6 +3235,24 @@
             importBtn.style.display = 'none';
         }
     });
+
+    function renderTelescopiusList() {
+        let container = document.getElementById('telescopius-list-targets');
+        if (!telescopiusListTargets.length) {
+            container.innerHTML = '<div class="discover-empty">Empty list</div>';
+            return;
+        }
+        let filtered = applyVisibilityFilter(telescopiusListTargets);
+        if (!filtered.length) {
+            container.innerHTML = `<div class="discover-empty">No list items match visibility filter (${telescopiusListTargets.length} hidden)</div>`;
+            return;
+        }
+        let countHtml = filtered.length < telescopiusListTargets.length
+            ? `<div style="font-size:0.7rem;color:rgba(255,255,255,0.5);margin-bottom:4px;">${filtered.length} of ${telescopiusListTargets.length} targets</div>`
+            : '';
+        container.innerHTML = countHtml + filtered.map(obj => renderDiscoverCard(obj)).join('');
+        bindDiscoverCardActions(container);
+    }
 
     function importTelescopiusListToFavorites() {
         if (!telescopiusListTargets.length) return;
@@ -3107,6 +3333,90 @@
         return item;
     }
 
+    // Attach a native altitude curve to each target (idempotent). Call after normalizeTarget
+    // and whenever location/time changes. Uses cached astro night for the observer.
+    function attachAltCurves(targets) {
+        targets.forEach(t => {
+            if (t && t.ra != null && t.dec != null) {
+                t.altCurve = computeAltCurve(t.ra, t.dec);
+            }
+        });
+        return targets;
+    }
+
+    function recomputeAllAltCurves() {
+        invalidateAstroNightCache();
+        if (Array.isArray(discoverHighlights)) attachAltCurves(discoverHighlights);
+        if (Array.isArray(telescopiusListTargets)) attachAltCurves(telescopiusListTargets);
+        if (typeof discoverSearchResults !== 'undefined' && Array.isArray(discoverSearchResults)) {
+            attachAltCurves(discoverSearchResults);
+        }
+    }
+
+    // Render a tiny inline altitude-vs-time SVG for a card.
+    // Horizontal axis: astronomical night (dusk → dawn). Vertical axis: alt 0–90°.
+    // Includes threshold dashed line (if set), midnight marker, transit dot.
+    function renderAltCurveSvg(curve, thresholdDeg, width = 120, height = 32) {
+        if (!curve || !curve.samples || !curve.samples.length) return '';
+        let n = curve.samples.length;
+        let pts = [];
+        for (let i = 0; i < n; i++) {
+            let x = (i / (n - 1)) * width;
+            let altClamped = Math.max(0, Math.min(90, curve.samples[i].alt));
+            let y = height - (altClamped / 90) * height;
+            pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+        }
+        // Transit marker (max alt) — use pre-computed index
+        let maxIdx = curve.maxIdx != null ? curve.maxIdx : 0;
+        let mx = (maxIdx / (n - 1)) * width;
+        let myAlt = Math.max(0, Math.min(90, curve.samples[maxIdx].alt));
+        let my = height - (myAlt / 90) * height;
+        // Threshold line (hidden if 0 or 90)
+        let thLine = '';
+        if (thresholdDeg > 0 && thresholdDeg < 90) {
+            let ty = height - (thresholdDeg / 90) * height;
+            thLine = `<line x1="0" y1="${ty.toFixed(1)}" x2="${width}" y2="${ty.toFixed(1)}" stroke="#2ecc71" stroke-dasharray="2,2" stroke-width="1" opacity="0.6"/>`;
+        }
+        // Midnight marker (nearest sample to local 00:00 inside the night window)
+        let midnightLine = '';
+        let startMs = curve.dusk.getTime(), endMs = curve.dawn.getTime();
+        // Find the next local midnight after dusk
+        let midnight = new Date(curve.dusk);
+        midnight.setHours(24, 0, 0, 0); // next day 00:00
+        let midMs = midnight.getTime();
+        if (midMs > startMs && midMs < endMs) {
+            let mxPos = ((midMs - startMs) / (endMs - startMs)) * width;
+            midnightLine = `<line x1="${mxPos.toFixed(1)}" y1="0" x2="${mxPos.toFixed(1)}" y2="${height}" stroke="#888" stroke-dasharray="1,2" stroke-width="0.5" opacity="0.6"/>`;
+        }
+        let baseline = `<line x1="0" y1="${height - 0.5}" x2="${width}" y2="${height - 0.5}" stroke="#555" stroke-width="0.5"/>`;
+        return `<svg class="dc-curve" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+            ${baseline}
+            ${midnightLine}
+            ${thLine}
+            <polyline points="${pts.join(' ')}" fill="none" stroke="#e74c3c" stroke-width="1.5"/>
+            <circle cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="2" fill="#fff" stroke="#e74c3c" stroke-width="1"/>
+        </svg>`;
+    }
+
+    // Time axis labels row: dusk … midnight … dawn
+    function renderCurveTimeAxis(curve) {
+        if (!curve) return '';
+        let startMs = curve.dusk.getTime(), endMs = curve.dawn.getTime();
+        let midnight = new Date(curve.dusk); midnight.setHours(24, 0, 0, 0);
+        let hasMidnight = midnight.getTime() > startMs && midnight.getTime() < endMs;
+        let midLabel = hasMidnight ? fmtHM(midnight) : '';
+        return `<div class="dc-curve-axis">
+            <span class="dc-axis-l">${fmtHM(curve.dusk)}</span>
+            <span class="dc-axis-c">${midLabel ? '│ ' + midLabel : ''}</span>
+            <span class="dc-axis-r">${fmtHM(curve.dawn)}</span>
+        </div>`;
+    }
+
+    function fmtHM(date) {
+        try { return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+        catch (_) { return ''; }
+    }
+
     // --- HTML escaping ---
     function escapeHtml(str) {
         const d = document.createElement('div');
@@ -3120,7 +3430,6 @@
         let type = escapeHtml(String(obj.type || ''));
         let mag = obj.magnitude != null ? parseFloat(obj.magnitude).toFixed(1) : '';
         let size = escapeHtml(String(obj.size || ''));
-        let alt = obj.altitude != null ? Math.round(obj.altitude) + '°' : '';
         let con = escapeHtml(String(obj.constellation || ''));
         let ra = obj.ra != null ? obj.ra : '';
         let dec = obj.dec != null ? obj.dec : '';
@@ -3129,11 +3438,39 @@
         if (imgUrl && !/^https?:\/\//i.test(imgUrl)) imgUrl = '';
         imgUrl = escapeHtml(String(imgUrl));
 
-        let metaParts = [type, mag ? `mag ${mag}` : '', size || '', alt ? `alt ${alt}` : '', con].filter(Boolean);
+        // Native visibility summary (from computed curve)
+        let vf = getVisibilityFilter();
+        let curve = obj.altCurve;
+        let maxAlt = curve ? Math.round(curveMaxAlt(curve)) : null;
+        let hoursAbove = (curve && vf.minAlt > 0) ? hoursAboveAlt(curve, vf.minAlt) : null;
+        let transitTime = '', transitDir = '';
+        if (curve) {
+            let s = curve.samples;
+            let idx = curve.maxIdx != null ? curve.maxIdx : 0;
+            transitTime = fmtHM(s[idx].t);
+            transitDir = azToCardinal(s[idx].az);
+        }
+
+        let visParts = [];
+        if (maxAlt != null && maxAlt > -90) {
+            let peak = `max ${maxAlt}°`;
+            if (transitDir) peak += ` ${transitDir}`;
+            visParts.push(peak);
+        }
+        if (transitTime) visParts.push(`@ ${transitTime}`);
+        if (hoursAbove != null) visParts.push(`${hoursAbove.toFixed(1)}h ≥ ${vf.minAlt}°`);
+
+        let metaParts = [type, mag ? `mag ${mag}` : '', size || '', con].filter(Boolean);
         let notesHtml = obj.notes ? `<div class="dc-meta" style="font-style:italic;opacity:0.7;">${escapeHtml(String(obj.notes))}</div>` : '';
 
         let imgHtml = imgUrl
             ? `<img class="dc-img" src="${imgUrl}" alt="${name}" onerror="this.style.display='none'">`
+            : '';
+
+        let curveSvg = renderAltCurveSvg(curve, vf.minAlt);
+        let curveAxis = curveSvg ? renderCurveTimeAxis(curve) : '';
+        let curveMetaHtml = visParts.length
+            ? `<div class="dc-curve-meta">${visParts.join(' · ')}</div>`
             : '';
 
         return `<div class="discover-card" data-ra="${escapeHtml(String(ra))}" data-dec="${escapeHtml(String(dec))}" data-name="${name}">
@@ -3142,6 +3479,9 @@
                 <div class="dc-name" title="${name}">${name}</div>
                 <div class="dc-meta">${metaParts.join(' · ')}</div>
                 ${notesHtml}
+                ${curveSvg}
+                ${curveAxis}
+                ${curveMetaHtml}
             </div>
             <div class="dc-actions">
                 <button class="dc-goto" title="Center on map">◎</button>
