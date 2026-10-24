@@ -128,6 +128,7 @@ describe("provider adapters", () => {
     const result = await fetchAdditionalProvider(p, loc, { ...cached, cache: { ...cached.cache, expires: new Date(Date.now() - 3600000).toUTCString() } }, fetchImpl);
     expect(result.samples).toEqual(cached.samples);
     expect(result.cache.lastModified).toBe(cached.cache.lastModified);
+    expect(result.cache.expires).toBe(expires);
     expect(fetchImpl.mock.calls[0][1].headers["If-Modified-Since"]).toBe(cached.cache.lastModified);
     expect(fetchImpl.mock.calls[0][1].headers["User-Agent"]).toContain("github.com/giancarloerra/APD");
     await expect(fetchAdditionalProvider(p, loc, { ...cached, cache: {} }, async () => new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 }))).rejects.toMatchObject({ status: 403 });
