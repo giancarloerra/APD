@@ -109,7 +109,7 @@ class WeatherService {
           throw new Error(failure?.status?.error ?? failure?.error ?? `Refresh HTTP ${refresh.status}`);
         }
       }
-      const response = await fetch(`${API_BASE_URL}/api/weather/summary?v=2`);
+      const response = await fetch(`${API_BASE_URL}/api/weather/forecast`);
       let result;
       try { result = await response.json(); }
       catch { throw new Error(`Forecast HTTP ${response.status}: invalid JSON response`); }

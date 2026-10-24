@@ -35,6 +35,46 @@ beforeEach(async () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("independent provider refresh and compatibility", () => {
+  it("serves compact original nights when added providers cannot supply session metadata", async () => {
+    await weatherService.downloadWeatherData();
+    for (const [key, record] of values) {
+      if (!key.startsWith("weather:provider:")) continue;
+      values.set(key, { ...record, timeZone: undefined, ...(record.id === "meteoblue" ? {} : { status: "error", samples: [] }) });
+    }
+    const result = await weatherService.getWeatherSummary();
+    expect(result.meteoblue_forecast[0].conditions.astrophotography_score).toBe(84);
+    expect(result.met_office_forecast[0].conditions.astrophotography_score).toBe(76);
+    expect(result.gfs_forecast).toBeNull();
+    expect(result.seven_timer_forecast).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(8);
+  });
+
+  it.each(["weather:provider:gfs", "weather:meteoblue_data", "weather:metoffice_data"])("propagates required Redis failures from %s for compact summaries", async key => {
+    await weatherService.downloadWeatherData();
+    redis.get.mockImplementation(async name => { if (name === key) throw new Error("Redis read denied"); return values.get(name) ?? null; });
+    await expect(weatherService.getWeatherSummary()).rejects.toThrow("Redis read denied");
+  });
+
+  it("keeps added-provider summaries usable without either original raw forecast", async () => {
+    await weatherService.downloadWeatherData();
+    values.delete("weather:meteoblue_data");
+    values.delete("weather:metoffice_data");
+    const summary = await weatherService.getWeatherSummary();
+    expect(summary.location).toEqual({ latitude: 51.5, longitude: -.1 });
+    expect(summary.meteoblue_forecast).toBeNull();
+    expect(summary.met_office_forecast).toBeNull();
+    expect(summary.ecmwf_forecast).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(8);
+  });
+
+  it("reports no available summary when no original source or observer clock can define nights", async () => {
+    await weatherService.downloadWeatherData();
+    values.delete("weather:meteoblue_data");
+    values.delete("weather:metoffice_data");
+    for (const [key, record] of values) if (key.startsWith("weather:provider:")) values.set(key, { ...record, timeZone: undefined });
+    expect(await weatherService.getWeatherSummary()).toBeNull();
+  });
+
   it("preserves legacy raw cache shapes while adding complete independently cached records", async () => {
     expect(await weatherService.downloadWeatherData()).toEqual(mb);
     expect(values.get("weather:meteoblue_data")).toEqual(mb);

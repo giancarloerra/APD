@@ -28,7 +28,7 @@ describe("complete forecast client", () => {
     expectTypeOf<ClientProvider["timeZone"]>().toEqualTypeOf<string | undefined>();
     expectTypeOf<ClientForecast["nightSessions"][number]["average"]["hourly"][number]["precipitationInterval"]["start"]>().toEqualTypeOf<string>();
     expect(await weatherService.getCompleteForecast(true)).toEqual(forecast);
-    expect(fetchMock.mock.calls.map(call => call[0])).toEqual(["/api/weather/refresh", "/api/weather/summary?v=2", "/api/weather/status"]);
+    expect(fetchMock.mock.calls.map(call => call[0])).toEqual(["/api/weather/refresh", "/api/weather/forecast", "/api/weather/status"]);
     expect(weatherService.getDownloadStatus().isDownloading).toBe(false);
   });
 

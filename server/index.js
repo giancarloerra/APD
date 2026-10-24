@@ -13,7 +13,6 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { weatherService, bindHelpers } from "./services/weatherService.js";
 import { ProviderError } from "./services/forecastProviders.js";
-import { createWeatherSummary } from "./utils/weatherProcessor.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -288,22 +287,13 @@ app.get("/api/health", async (req, res) => {
 // ===== PUBLIC API: weather summary (for AI) =====
 app.get("/api/weather/summary", async (req, res) => {
   try {
-    if (req.query.v === "2") {
-      return res.json(await weatherService.getCompleteForecast());
-    }
-    const meteoblueData = await weatherService.getWeatherData();
-    const metOfficeData = await weatherService.getMetOfficeData();
-    if (!meteoblueData && !metOfficeData) {
+    const summary = await weatherService.getWeatherSummary();
+    if (!summary) {
       return res.status(404).json({ error: "No weather data available" });
     }
-    const summary = createWeatherSummary(meteoblueData, metOfficeData);
     res.json(summary);
   } catch (error) {
     console.error("Error creating weather summary:", error);
-    if (req.query.v === "2") {
-      const known = error instanceof ProviderError;
-      return res.status(503).json({ error: known ? error.message : "Forecast unavailable; check server logs", code: known ? error.code : "forecast_unavailable", providers: known ? error.providers : undefined });
-    }
     res.status(500).json({ error: "Failed to create weather summary" });
   }
 });
@@ -378,6 +368,16 @@ app.get("/settings", requireAuth, (req, res) => {
 });
 
 // ===== WEATHER API ROUTES (protected by middleware above) =====
+app.get("/api/weather/forecast", async (req, res) => {
+  try {
+    res.json(await weatherService.getCompleteForecast());
+  } catch (error) {
+    console.error("Error creating dashboard forecast:", error);
+    const known = error instanceof ProviderError;
+    res.status(503).json({ error: known ? error.message : "Forecast unavailable; check server logs", code: known ? error.code : "forecast_unavailable", providers: known ? error.providers : undefined });
+  }
+});
+
 app.get("/api/weather", async (req, res) => {
   try {
     const data = await weatherService.getWeatherData();

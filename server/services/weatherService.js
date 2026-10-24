@@ -1,5 +1,6 @@
 import { PROVIDERS, ProviderError, fetchAdditionalProvider, hasUnalignedHourlyClock, normalizeMeteoblue, normalizeOpenMeteo, requestProvider } from "./forecastProviders.js";
 import { createCompleteForecast } from "../utils/forecastProcessor.js";
+import { createWeatherSummary } from "../utils/weatherProcessor.js";
 
 // URLs are now built dynamically — key and location come from server/index.js exports
 const REDIS_KEY_WEATHER_DATA = "weather:meteoblue_data";
@@ -267,7 +268,7 @@ export class WeatherService {
     return meteoblueData;
   }
 
-  async getCompleteForecast() {
+  async getForecastRecords() {
     await this.ensureInitialized();
     if (this._downloadPromise) await this._downloadPromise;
     let records = await Promise.all(PROVIDERS.map(provider => _redis.get(providerKey(provider.id))));
@@ -278,6 +279,28 @@ export class WeatherService {
     const loc = await _getObserverLocation();
     if (records.some(record => !record)) throw new Error("Provider records were not persisted to Redis");
     const current = records.map(record => record.location?.lat === loc.lat && record.location?.lon === loc.lon && record.location?.alt === loc.alt ? record : { ...record, status: "error", samples: [], error: { code: "location_changed", message: "Location changed; refresh forecasts" } });
+    return { records: current, location: loc };
+  }
+
+  async getWeatherSummary() {
+    const { records, location } = await this.getForecastRecords();
+    const [meteoblue, metoffice] = await Promise.all([
+      _redis.get(REDIS_KEY_WEATHER_DATA), _redis.get(REDIS_KEY_METOFFICE_DATA),
+    ]);
+    if (!meteoblue && !metoffice && !records.some(record => record.status === "ok")) return null;
+    // The original two lists do not depend on another provider's clock metadata.
+    // Added lists need a known observer timezone and day/night boundaries.
+    const hasTimeZone = records.some(record => record.id !== "metoffice" && record.timeZone);
+    const hasBoundaries = records.some(record => record.status === "ok" && (record.clock ?? record.samples).some(sample => sample.isDay === 0 || sample.isDay === 1));
+    const forecast = hasTimeZone && hasBoundaries
+      ? createCompleteForecast(records, location)
+      : { providers: records, location: { latitude: location.lat, longitude: location.lon }, nightSessions: null };
+    if (!meteoblue && !metoffice && !forecast.nightSessions) return null;
+    return createWeatherSummary(meteoblue, metoffice, forecast);
+  }
+
+  async getCompleteForecast() {
+    const { records: current, location: loc } = await this.getForecastRecords();
     try {
       if (current.every(record => record.error?.code === "location_changed")) throw new ProviderError("Location changed; refresh forecasts", "location_changed");
       return createCompleteForecast(current, loc);

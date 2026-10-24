@@ -10,7 +10,7 @@ function isYesterday(dateString) {
   return dateString === yesterdayString;
 }
 
-export function createWeatherSummary(meteoblueData, metOfficeData) {
+export function createWeatherSummary(meteoblueData, metOfficeData, forecast) {
   // Location from whichever source is available
   const latitude =
     meteoblueData?.metadata?.latitude ||
@@ -44,6 +44,50 @@ export function createWeatherSummary(meteoblueData, metOfficeData) {
     );
   }
 
+  if (forecast) {
+    if (!meteoblueData && !metOfficeData && forecast.location) {
+      summary.location = { latitude: forecast.location.latitude, longitude: forecast.location.longitude };
+    }
+    const additional = {
+      ukv: "ukv_forecast", ecmwf: "ecmwf_forecast", gfs: "gfs_forecast",
+      icon: "icon_forecast", metnorway: "met_norway_forecast",
+      metservice: "metservice_forecast", timer: "seven_timer_forecast",
+    };
+    const rounded = value => value === null ? null : Math.round(value);
+    for (const [id, key] of Object.entries(additional)) {
+      const provider = forecast.providers.find(source => source.id === id);
+      if (provider?.status !== "ok" || !forecast.nightSessions) {
+        summary[key] = null;
+        continue;
+      }
+      summary[key] = forecast.nightSessions.flatMap(night => {
+        const source = night.sources[id];
+        const hours = id === "timer" ? night.atmosphere.samples : source?.hourly;
+        if (!hours?.length) return [];
+        const conditions = source?.summary;
+        const score = conditions?.score.value ?? null;
+        const probability = conditions?.precipitationProbability.value ?? null;
+        return [{
+          date: night.date,
+          day_name: night.dayName,
+          night_duration: {
+            hours: id === "timer" ? night.durationHours : hours.length,
+            start_time: hours[0].localTime,
+            end_time: hours.at(-1).localTime,
+          },
+          conditions: {
+            astrophotography_score: score,
+            avg_cloud_cover: rounded(conditions?.cloudCover.value ?? null),
+            ...(probability === null
+              ? { total_precipitation_mm: rounded(conditions?.precipitationAmount.value ?? null) }
+              : { avg_precipitation_percent: rounded(probability) }),
+            quality: score === null ? null : getQualityDescription(score),
+          },
+          source: provider.name,
+        }];
+      });
+    }
+  }
   return summary;
 }
 

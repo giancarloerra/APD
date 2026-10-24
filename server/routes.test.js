@@ -19,11 +19,20 @@ beforeAll(async () => {
 afterAll(async () => { await app?.close(); });
 
 describe("real HTTP/auth and Redis-client route contracts", () => {
-  it("keeps legacy and v2 summaries public while key controls remain protected", async () => {
+  it("keeps compact summaries public and protects the unchanged dashboard model and key controls", async () => {
     const legacy = await fetch(app.base + "/api/weather/summary");
     expect(legacy.status).toBe(200);
-    expect(Object.keys(await legacy.json()).sort()).toEqual(["current_time", "location", "met_office_forecast", "meteoblue_forecast"]);
-    const complete = await fetch(app.base + "/api/weather/summary?v=2");
+    const summary = await legacy.json();
+    expect(Object.keys(summary)).toEqual(["current_time", "location", "meteoblue_forecast", "met_office_forecast", "ukv_forecast", "ecmwf_forecast", "gfs_forecast", "icon_forecast", "met_norway_forecast", "metservice_forecast", "seven_timer_forecast"]);
+    expect(summary.gfs_forecast[0]).toMatchObject({ conditions: { astrophotography_score: 100, avg_cloud_cover: 0, total_precipitation_mm: null, quality: "Excellent" }, source: "GFS" });
+    expect(summary.icon_forecast).toBeNull();
+    const selector = await fetch(app.base + "/api/weather/summary?v=2").then(response => response.json());
+    expect(Object.keys(selector)).toEqual(Object.keys(summary));
+    expect(selector.gfs_forecast).toEqual(summary.gfs_forecast);
+    const protectedForecast = await fetch(app.base + "/api/weather/forecast", { redirect: "manual" });
+    expect(protectedForecast.status).toBe(302);
+    expect(protectedForecast.headers.get("location")).toBe("/login");
+    const complete = await fetch(app.base + "/api/weather/forecast", { headers: { Cookie: cookie } });
     expect(complete.status).toBe(200);
     const forecast = await complete.json();
     expect(forecast).toMatchObject({
@@ -79,7 +88,10 @@ describe("real HTTP/auth and Redis-client route contracts", () => {
       return get(key);
     });
     try {
-      const response = await fetch(app.base + "/api/weather/summary?v=2");
+      const publicResponse = await fetch(app.base + "/api/weather/summary");
+      expect(publicResponse.status).toBe(500);
+      expect(await publicResponse.json()).toEqual({ error: "Failed to create weather summary" });
+      const response = await fetch(app.base + "/api/weather/forecast", { headers: { Cookie: cookie } });
       expect(response.status).toBe(503);
       const body = await response.json();
       expect(body.code).toBe("forecast_unavailable");
@@ -105,14 +117,14 @@ describe("real HTTP/auth and Redis-client route contracts", () => {
     const original = app.values.get(key);
     try {
       app.values.set(key, JSON.stringify({ ...JSON.parse(original), status: "error", samples: [], error: { code: "timeout", message: "Upstream request timed out after 20 seconds" } }));
-      const response = await fetch(app.base + "/api/weather/summary?v=2");
+      const response = await fetch(app.base + "/api/weather/forecast", { headers: { Cookie: cookie } });
       expect(response.status).toBe(503);
       const result = await response.json();
       expect(result.code).toBe("session_boundaries_unavailable");
       expect(result.providers.find(provider => provider.id === "gfs").error.code).toBe("timeout");
       expect(result).not.toHaveProperty("nightSessions");
     } finally { app.values.set(key, original); }
-    expect((await fetch(app.base + "/api/weather/summary?v=2")).status).toBe(200);
+    expect((await fetch(app.base + "/api/weather/forecast", { headers: { Cookie: cookie } })).status).toBe(200);
   });
 
   it("rejects object/array datetime queries before proxying and preserves valid scalar cache reads", async () => {

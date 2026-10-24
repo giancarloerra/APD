@@ -457,23 +457,23 @@ A cron service calls the trigger endpoint on a schedule to pre-fetch fresh data 
 
 ### Email Notifications
 
-Use a script, scheduler or automation service to fetch the complete forecast and send a notification after a scheduled refresh:
+Use a script, scheduler or automation service to fetch the nightly summary and send a notification after a scheduled refresh:
 
 - **Trigger**: schedule a second HTTP call ~5 minutes after the cron refresh
-- **Content**: fetch `https://your-apd.example.com/api/weather/summary?v=2`. Check that the HTTP request succeeds and `schemaVersion` is `2` before processing it. Report HTTP failures through your own workflow instead of treating them as a forecast.
-- **Classification**: use `nightSessions[].average.summary.score.value` and the accompanying contributor/coverage metadata, rather than hardcoding two provider names.
+- **Content**: fetch `https://your-apd.example.com/api/weather/summary`. Check that the HTTP request succeeds before processing it. Report HTTP failures through your own workflow instead of treating them as a forecast.
+- **Classification**: read `conditions.astrophotography_score` in each available provider's nightly list. Null forecasts and scores cannot qualify as a good night.
 
 ### General AI prompt example
 
-The [copyable prompt](docs/ai-forecast-prompt.md) works with any AI tool that accepts text and JSON. Replace `<CURRENT_TIMESTAMP_ISO_8601>` with the current timestamp, `https://your-apd.example.com/` with your dashboard URL, and `<APD_FORECAST_JSON>` with the successful v2 response. No platform-specific tokens are required.
+The [copyable prompt](docs/ai-forecast-prompt.md) works with any AI tool that accepts text and JSON. Replace `<CURRENT_TIMESTAMP_ISO_8601>` with the current timestamp including the observing location's UTC offset, `https://your-apd.example.com/` with your dashboard URL, and `<APD_FORECAST_JSON>` with the successful summary response. No platform-specific tokens are required.
 
-The example uses APD's **Good threshold of 60**, gives today's night priority over tomorrow, and requires complete aggregate cloud/score coverage. It returns only:
+The example uses APD's **Good threshold of 60**, qualifies a night when any available provider meets that threshold, and gives today's night priority over tomorrow. It returns only:
 
 ```json
 {"subject":"GOOD NIGHT TODAY","body":"https://your-apd.example.com/"}
 ```
 
-The other subjects are `GOOD NIGHT TOMORROW` and `Astro Forecast`. The latter is used when neither today nor tomorrow qualifies, including when only later nights look good. Dates use the response's observer timezone, not the automation server's timezone. Adjust the stated threshold if your observing requirements differ.
+The other subjects are `GOOD NIGHT TOMORROW` and `Astro Forecast`. The latter is used when neither today nor tomorrow qualifies, including when only later nights look good. Dates use the observing location's offset in the supplied timestamp. Adjust the stated threshold if your observing requirements differ.
 
 ---
 
@@ -732,16 +732,16 @@ Both the weather dashboard and sky dashboard share a single observer location st
 | `GET/POST` | `/api/weather/refresh/trigger?key=…` | **Token** | Cron trigger — public, token-authenticated (3 req/min) |
 | `GET` | `/api/weather/status` | Yes | Download status only |
 | `GET` | `/api/weather/metoffice` | Yes | Cached Met Office data |
-| `GET` | `/api/weather/summary` | **No** | LLM-friendly processed forecast |
-| `GET` | `/api/weather/summary?v=2` | **No** | Complete normalized night/day/hourly forecast, all sources, native data, averages, scores, coverage and errors |
+| `GET` | `/api/weather/summary` | **No** | Compact nightly summaries for all nine providers |
+| `GET` | `/api/weather/forecast` | Yes | Dashboard's night/day/hourly model |
 | `GET` | `/api/weather/meteoblue/key-status` | Yes | Check if Meteoblue key is configured |
 | `PUT` | `/api/weather/meteoblue/key` | Yes | Save Meteoblue API key to Redis |
 | `GET` | `/api/weather/metservice/key-status` | Yes | MetService key configured/source metadata only |
 | `PUT` | `/api/weather/metservice/key` | Yes | Save optional MetService key to Redis |
 
-The v2 response includes `schemaVersion`, `generatedAt`, `timeZone`, `location`, `units`, `providers`, `scoreDefinition`, `aggregation`, `summary`, `nightSessions` and `daySessions`. Each session includes `start`, `end`, `durationHours`, `expectedTimestamps`, `average.summary`, `average.hourly`, provider summaries/hourly/reference series under `sources`, and native 7Timer data under `atmosphere`. Provider-level hourly series retain supplied fields beyond the comparison sessions. Numeric metrics include `value`, `unit`, `sourceIds`, `sampleCount`, `expectedSampleCount`, `coverage` and `unavailableReason`. The API never includes key values.
+The public summary retains `current_time`, `location`, `meteoblue_forecast` and `met_office_forecast`, and adds `ukv_forecast`, `ecmwf_forecast`, `gfs_forecast`, `icon_forecast`, `met_norway_forecast`, `metservice_forecast` and `seven_timer_forecast`. Every night keeps the compact `date`, `day_name`, `night_duration`, `conditions` and `source` structure. Conditions contain the score, average cloud cover, provider-appropriate rain probability or accumulated amount, and quality label. Existing Meteoblue and Met Office calculations and rounding are unchanged.
 
-The request without `v=2` retains its original response fields and scores. Existing raw-data and refresh response shapes remain unchanged, and both summary versions stay public. Browser writes follow the [origin checks](#-authentication) described above. See [the general AI prompt example](#general-ai-prompt-example) for a consumer of the complete response.
+Unavailable provider lists are `null`; a provider with no night samples in the forecast span has an empty list. Added summaries require the observer timezone and day/night boundaries; if those inputs are unavailable their lists are `null`, while the original two summaries remain independent. Unsupported exact values remain `null`: 7Timer's cloud bands are not converted to an exact percentage or score, and MetService's instantaneous rain rate is not converted to accumulated millimetres. The summary contains no daytime/hourly arrays, overall average, scoring definitions or metric metadata. Querying `?v=2` also returns this compact summary. Existing raw-data and refresh response shapes remain unchanged. Browser writes follow the [origin checks](#-authentication) described above. See [the general AI prompt example](#general-ai-prompt-example).
 
 ### Cron Trigger Token
 
@@ -795,7 +795,7 @@ apd/
 │   │   └── weatherService.js       # Independent provider refresh and Redis caching
 │   └── utils/
 │       ├── forecastProcessor.js    # Complete v2 forecast sessions and aggregation
-│       ├── weatherProcessor.js     # Legacy /api/weather/summary processing
+│       ├── weatherProcessor.js     # Compact nightly /api/weather/summary processing
 │       └── weatherProcessor.test.js
 ├── src/                            # Frontend (React + TypeScript)
 │   ├── main.tsx                    # React entry point
