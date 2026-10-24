@@ -30,7 +30,7 @@ export type ForecastSample = Record<MetricName, number | null> & {
   transparency?: ForecastBand | null;
   fields?: Record<string, unknown>;
 };
-export type AverageHour = Record<MetricName, ForecastMetric> & { time: string; localDate: string; localTime: string; hour: number; score: ForecastScore };
+export type AverageHour = Record<MetricName, ForecastMetric> & { time: string; localDate: string; localTime: string; hour: number; precipitationInterval: { start: string; end: string }; score: ForecastScore };
 
 export interface ProviderForecast {
   id: string;
@@ -62,13 +62,19 @@ export interface ForecastProvider {
   name: string;
   model: string;
   optional?: boolean;
+  region?: string;
+  location: { lat: number; lon: number; alt: number };
+  timeZone?: string;
   status: string;
   fetchedAt?: string;
   forecastRun?: string | null;
   availableFrom: string | null;
   availableUntil: string | null;
+  sampleCount: number;
   outputStepMinutes?: number | null;
   nativeStepMinutes?: number | null;
+  units?: Record<string, string>;
+  hourly: ForecastSample[];
   error: { code: string; message: string; httpStatus: number | null } | null;
 }
 
@@ -77,6 +83,9 @@ export interface CompleteForecast {
   generatedAt: string;
   timeZone: string;
   location: { latitude: number; longitude: number; elevation: number };
+  units: Record<MetricName | "seeing" | "transparency", string>;
+  scoreDefinition: { meteoblue: string; cloudOnly: string; average: string; categorical: string; qualityThresholds: Record<string, number> };
+  aggregation: { method: string; sessionBoundaries: string; precipitation: string; sourceOverlap: string; missing: string };
   providers: ForecastProvider[];
   nightSessions: ForecastSession[];
   daySessions: ForecastSession[];

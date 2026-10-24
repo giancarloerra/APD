@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 beforeEach(() => {
   vi.resetModules();
@@ -15,6 +15,18 @@ describe("complete forecast client", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ isDownloading: false, lastDownload: "2026-01-01T12:00:00Z" })));
     vi.stubGlobal("fetch", fetchMock);
     const { weatherService } = await import("./weatherService");
+    type ClientForecast = Awaited<ReturnType<typeof weatherService.getCompleteForecast>>;
+    type ClientProvider = ClientForecast["providers"][number];
+    expectTypeOf<ClientForecast["units"]["cloudCover"]>().toEqualTypeOf<string>();
+    expectTypeOf<ClientForecast["scoreDefinition"]["qualityThresholds"]["Good"]>().toEqualTypeOf<number>();
+    expectTypeOf<ClientForecast["aggregation"]["method"]>().toEqualTypeOf<string>();
+    expectTypeOf<ClientProvider["hourly"][number]["cloudCover"]>().toEqualTypeOf<number | null>();
+    expectTypeOf<ClientProvider["units"]>().toEqualTypeOf<Record<string, string> | undefined>();
+    expectTypeOf<ClientProvider["location"]["lat"]>().toEqualTypeOf<number>();
+    expectTypeOf<ClientProvider["sampleCount"]>().toEqualTypeOf<number>();
+    expectTypeOf<ClientProvider["region"]>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<ClientProvider["timeZone"]>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<ClientForecast["nightSessions"][number]["average"]["hourly"][number]["precipitationInterval"]["start"]>().toEqualTypeOf<string>();
     expect(await weatherService.getCompleteForecast(true)).toEqual(forecast);
     expect(fetchMock.mock.calls.map(call => call[0])).toEqual(["/api/weather/refresh", "/api/weather/summary?v=2", "/api/weather/status"]);
     expect(weatherService.getDownloadStatus().isDownloading).toBe(false);

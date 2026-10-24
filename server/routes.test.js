@@ -25,7 +25,27 @@ describe("real HTTP/auth and Redis-client route contracts", () => {
     expect(Object.keys(await legacy.json()).sort()).toEqual(["current_time", "location", "met_office_forecast", "meteoblue_forecast"]);
     const complete = await fetch(app.base + "/api/weather/summary?v=2");
     expect(complete.status).toBe(200);
-    expect((await complete.json()).schemaVersion).toBe(2);
+    const forecast = await complete.json();
+    expect(forecast).toMatchObject({
+      schemaVersion: 2,
+      units: { ...METRICS, seeing: "arcsec", transparency: "mag/airmass" },
+      scoreDefinition: {
+        meteoblue: expect.any(String), cloudOnly: expect.any(String), average: expect.any(String), categorical: expect.any(String),
+        qualityThresholds: { Excellent: 90, "Very Good": 75, Good: 60, Fair: 45, Poor: 30, "Very Poor": 0 },
+      },
+      aggregation: {
+        method: "unweighted arithmetic mean per timestamp and metric", sessionBoundaries: expect.any(String),
+        precipitation: expect.any(String), sourceOverlap: expect.any(String), missing: expect.any(String),
+      },
+    });
+    const provider = forecast.providers.find(p => p.id === "gfs");
+    expect(provider).toMatchObject({ sampleCount: 1, location: { lat: forecast.location.latitude, lon: forecast.location.longitude, alt: forecast.location.elevation } });
+    expect(provider.hourly).toHaveLength(1);
+    expect(provider.hourly[0]).toMatchObject({ cloudCover: 0, temperature: 0, localTime: "22:00" });
+    expect(forecast.providers.find(p => p.id === "ukv").region).toBe("UK and Ireland");
+    expect(forecast.providers.find(p => p.id === "metservice").hourly).toEqual([]);
+    const average = forecast.nightSessions[0].average.hourly[0];
+    expect(average.precipitationInterval).toEqual({ start: average.time, end: new Date(Date.parse(average.time) + 3600000).toISOString() });
     // The existing /api/* auth mount redirects unauthenticated requests to login.
     // Do not follow that redirect and mistake the login page's 200 for access.
     const status = await fetch(app.base + statusPath, { redirect: "manual" });
