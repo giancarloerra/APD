@@ -1,12 +1,12 @@
 import { WeatherData, DownloadStatus } from "../types/weather";
 import type { MetOfficeData } from "../utils/metOfficeUtils";
+import type { CompleteForecast } from "../types/forecast";
 
 const API_BASE_URL = ""; // Always use relative URLs - same origin as frontend
 
 class WeatherService {
   private downloadStatus: DownloadStatus = { isDownloading: false };
   private statusListeners: ((status: DownloadStatus) => void)[] = [];
-  private statusPollingInterval: number | null = null;
 
   constructor() {
     this.startStatusPolling();
@@ -26,7 +26,7 @@ class WeatherService {
 
   private startStatusPolling() {
     // Poll status every 2 seconds when downloading
-    this.statusPollingInterval = window.setInterval(async () => {
+    window.setInterval(async () => {
       if (this.downloadStatus.isDownloading) {
         await this.fetchStatus();
       }
@@ -94,6 +94,34 @@ class WeatherService {
 
   getDownloadStatus(): DownloadStatus {
     return { ...this.downloadStatus };
+  }
+
+  async getCompleteForecast(forceDownload = false): Promise<CompleteForecast> {
+    try {
+      if (forceDownload) {
+        this.downloadStatus = { ...this.downloadStatus, isDownloading: true, error: undefined };
+        this.notifyStatusChange();
+        const refresh = await fetch(`${API_BASE_URL}/api/weather/refresh`, { method: "POST", headers: { "Content-Type": "application/json" } });
+        if (!refresh.ok) {
+          let failure;
+          try { failure = await refresh.json(); }
+          catch { throw new Error(`Refresh HTTP ${refresh.status}: invalid JSON response`); }
+          throw new Error(failure?.status?.error ?? failure?.error ?? `Refresh HTTP ${refresh.status}`);
+        }
+      }
+      const response = await fetch(`${API_BASE_URL}/api/weather/summary?v=2`);
+      let result;
+      try { result = await response.json(); }
+      catch { throw new Error(`Forecast HTTP ${response.status}: invalid JSON response`); }
+      if (!response.ok) throw new Error(result?.error ?? `Forecast HTTP ${response.status}`);
+      if (result?.schemaVersion !== 2) throw new Error("Unsupported complete forecast schema");
+      await this.fetchStatus();
+      return result;
+    } catch (error) {
+      this.downloadStatus = { ...this.downloadStatus, isDownloading: false, error: error instanceof Error ? error.message : "Failed to load forecasts" };
+      this.notifyStatusChange();
+      throw error;
+    }
   }
 
   async getMetOfficeData(): Promise<MetOfficeData | null> {

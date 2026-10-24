@@ -22,12 +22,12 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 ## Getting Started
 
 1. **Fork** the repository and clone your fork locally.
-2. Install dependencies — requires **Node.js ≥ 18** and npm.
+2. Install dependencies using **Node.js 22.22.2+** and npm.
 
 ```bash
 git clone https://github.com/giancarloerra/apd.git
 cd apd
-npm install
+npm ci
 cp .env.example .env
 # Fill in .env with your Upstash credentials and API keys
 npm run dev

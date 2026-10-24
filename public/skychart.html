@@ -1196,9 +1196,9 @@
         fovList.forEach(f => {
             let li = document.createElement('li');
             li.className = f.id === activeFovId ? 'active' : '';
-            li.innerHTML = `<span style="color:#eee; flex: 1; overflow:hidden; text-overflow:ellipsis;">${f.name}</span>
-                <span class="fov-dims">${f.width}° × ${f.height}°</span>
-                <button class="item-del-btn" data-id="${f.id}" title="Delete">✕</button>`;
+            li.innerHTML = `<span style="color:#eee; flex: 1; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(f.name)}</span>
+                <span class="fov-dims">${escapeHtml(f.width)}° × ${escapeHtml(f.height)}°</span>
+                <button class="item-del-btn" data-id="${escapeHtml(f.id)}" title="Delete">✕</button>`;
             li.addEventListener('click', (e) => {
                 if (e.target.classList.contains('item-del-btn')) return;
                 selectFov(f.id);
@@ -1272,10 +1272,10 @@
         ul.innerHTML = '';
         favList.forEach(f => {
             let li = document.createElement('li');
-            let mosaicBadge = f.mosaic ? `<span style="margin-left:4px;padding:1px 5px;background:rgba(180,100,255,0.25);border:1px solid rgba(180,100,255,0.6);border-radius:3px;font-size:0.6rem;color:#d090ff;vertical-align:middle;">${f.mosaic.cols}×${f.mosaic.rows}</span>` : '';
-            li.innerHTML = `<span style="color:#eee; flex: 1; overflow:hidden; text-overflow:ellipsis;">${f.name}${mosaicBadge}</span>
-                <span class="fav-coords">${formatRA(f.ra)} ${formatDec(f.dec)} r${f.rotation}°</span>
-                <button class="item-del-btn" data-id="${f.id}" title="Delete">✕</button>`;
+            let mosaicBadge = f.mosaic ? `<span style="margin-left:4px;padding:1px 5px;background:rgba(180,100,255,0.25);border:1px solid rgba(180,100,255,0.6);border-radius:3px;font-size:0.6rem;color:#d090ff;vertical-align:middle;">${escapeHtml(f.mosaic.cols)}×${escapeHtml(f.mosaic.rows)}</span>` : '';
+            li.innerHTML = `<span style="color:#eee; flex: 1; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(f.name)}${mosaicBadge}</span>
+                <span class="fav-coords">${formatRA(f.ra)} ${formatDec(f.dec)} r${escapeHtml(f.rotation)}°</span>
+                <button class="item-del-btn" data-id="${escapeHtml(f.id)}" title="Delete">✕</button>`;
             li.addEventListener('click', (e) => {
                 if (e.target.classList.contains('item-del-btn')) return;
                 goToFavorite(f);
@@ -3041,7 +3041,7 @@
             if (data.moon.set) items.push({ label: '🌙 Moonset', val: fmtTime(data.moon.set) });
         }
         container.innerHTML = items.map(i =>
-            `<span class="st-item"><span class="st-label">${i.label}</span> <span class="st-val">${i.val}</span></span>`
+            `<span class="st-item"><span class="st-label">${i.label}</span> <span class="st-val">${escapeHtml(i.val)}</span></span>`
         ).join('');
         if (items.length === 0) container.innerHTML = '<span class="discover-empty">No solar data available</span>';
     }
@@ -3419,9 +3419,7 @@
 
     // --- HTML escaping ---
     function escapeHtml(str) {
-        const d = document.createElement('div');
-        d.textContent = str;
-        return d.innerHTML;
+        return String(str).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     }
 
     // --- Shared rendering ---

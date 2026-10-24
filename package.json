@@ -13,7 +13,7 @@
     "url": "https://github.com/giancarloerra/apd/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
     "dev": "concurrently \"npm run client:dev\" \"npm run server:dev\"",
@@ -23,7 +23,7 @@
     "build:server": "echo 'Server build complete'",
     "start": "node server/index.js",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -42,25 +42,33 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@eslint/js": "^9.9.1",
-    "@release-it/conventional-changelog": "^10.0.5",
+    "@eslint/js": "^10.0.0",
+    "@release-it/conventional-changelog": "^12.0.2",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/coverage-v8": "^4.1.12",
     "autoprefixer": "^10.4.18",
     "concurrently": "^8.2.2",
-    "eslint": "^9.9.1",
-    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
-    "eslint-plugin-react-refresh": "^0.4.11",
+    "eslint": "^10.0.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^15.9.0",
     "nodemon": "^3.0.2",
     "postcss": "^8.4.35",
-    "release-it": "^19.2.4",
+    "release-it": "^21.1.1",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.5.3",
-    "typescript-eslint": "^8.3.0",
-    "vite": "^5.4.2",
-    "vitest": "^4.0.18"
+    "typescript-eslint": "^8.72.0",
+    "vite": "^7.3.7",
+    "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "release-it": {
+      "undici": "^7.30.1"
+    },
+    "get-uri@^8": {
+      "basic-ftp": "^6.2.1"
+    }
   }
 }

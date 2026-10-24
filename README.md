@@ -6,11 +6,11 @@
 
 [![CI](https://github.com/giancarloerra/apd/actions/workflows/ci.yml/badge.svg)](https://github.com/giancarloerra/apd/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Node ≥ 18](https://img.shields.io/badge/node-%E2%89%A518-brightgreen)](package.json)
+[![Node ≥ 22.22.2](https://img.shields.io/badge/node-%E2%89%A522.22.2-brightgreen)](package.json)
 
 After two decades of astrophotography, and using pretty much every weather and sky chart tool out there, I grew frustrated as the tools were either too complex or simplistic.
 
-So I made APD, Astrophotography Planning Dashboard, a unified web application for astrophotography planning. Combines weather forecasts from multiple sources (Meteoblue and Met Office via Open-Meteo) with an interactive visual sky chart (Aladin Lite + Telescopius) for framing and planning, and an endpoint dedicated to LLM-friendly weather summaries for AI integrations.
+So I made APD, Astrophotography Planning Dashboard, a unified web application for astrophotography planning. Combines weather forecasts from Open-Meteo models, MET Norway, 7Timer, optional Meteoblue and optional MetService with an interactive visual sky chart (Aladin Lite + Telescopius) for framing and planning, and a complete weather API for scripts and AI integrations.
 
 Two years ago I started building this for myself, and it evolved into my one-stop-shop for all my planning needs, from night & day (deep sky and solar) weather forecasts to a sky chart highly focused on visual framing and planning.
 
@@ -102,7 +102,8 @@ Render.com lets you deploy straight from this public repository URL — just poi
 4. In the **Environment** tab, add these variables (enter each as a key-value pair, or click **Add from .env** to bulk-import from your local file):
    - `UPSTASH_REDIS_REST_URL` — from your Upstash dashboard (check [🔑 Required services and API keys](#-required-services-and-api-keys))
    - `UPSTASH_REDIS_REST_TOKEN` — from your Upstash dashboard (check [🔑 Required services and API keys](#-required-services-and-api-keys))
-   - `METEOBLUE_API_KEY` — from your Meteoblue account (check [🔑 Required services and API keys](#-required-services-and-api-keys))
+   - `METEOBLUE_API_KEY` — optional, from your Meteoblue account (check [🔑 Required services and API keys](#-required-services-and-api-keys))
+   - `METSERVICE_API_KEY` — optional, for the MetService Point Forecast API
    - `MASTER_PASSWORD` — a password to protect your dashboard (recommended)
    - `TELESCOPIUS_API_KEY` — from your Telescopius account (optional) (check [🔑 Required services and API keys](#-required-services-and-api-keys))
    - `NODE_ENV=production`
@@ -118,16 +119,16 @@ Render.com lets you deploy straight from this public repository URL — just poi
 
 You can run APD entirely on your own machine — no cloud hosting needed. This is great if you prefer to run everything local or you're not comfortable with deploying to a cloud platform.
 
-You will still need the external service accounts (Upstash Redis, Meteoblue API key — see [🔑 Required services and API keys](#-required-services-and-api-keys)) because those provide the weather data and database that the app relies on.
+You will still need an Upstash Redis account and an internet connection. The keyless weather sources work without Meteoblue or MetService; those optional keys add their forecasts. See [🔑 Required services and API keys](#-required-services-and-api-keys).
 
 ### What you need to install first
 
-APD runs on **Node.js** (a free, cross-platform JavaScript runtime). You only need to install it once.
+APD requires **Node.js 22.22.2 or a later supported LTS version**. Node 18 and 20 are no longer supported by the development toolchain. Existing settings and stored data do not need a migration.
 
 <details>
 <summary><strong>Windows</strong></summary>
 
-1. Download the **Node.js LTS installer** from [nodejs.org](https://nodejs.org/) (the big green button).
+1. Download the **Node.js 22 installer**, version 22.22.2 or later, from [nodejs.org](https://nodejs.org/en/download).
 2. Run the installer — accept the defaults and click through.
 3. When finished, open **Command Prompt** (press `Win + R`, type `cmd`, press Enter).
 4. Verify the installation:
@@ -142,7 +143,7 @@ APD runs on **Node.js** (a free, cross-platform JavaScript runtime). You only ne
 <details>
 <summary><strong>macOS</strong></summary>
 
-1. Download the **Node.js LTS installer** from [nodejs.org](https://nodejs.org/) (the big green button).
+1. Download the **Node.js 22 installer**, version 22.22.2 or later, from [nodejs.org](https://nodejs.org/en/download).
 2. Open the downloaded `.pkg` file and follow the prompts.
 3. Open **Terminal** (press `Cmd + Space`, type `Terminal`, press Enter).
 4. Verify the installation:
@@ -162,7 +163,7 @@ APD runs on **Node.js** (a free, cross-platform JavaScript runtime). You only ne
    sudo apt update
    sudo apt install -y nodejs npm
    ```
-   If the version is older than 18, use the [NodeSource](https://github.com/nodesource/distributions#installation-instructions) setup instead:
+   If the installed version is below 22.22.2, use the [NodeSource](https://github.com/nodesource/distributions#installation-instructions) setup instead:
    ```bash
    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
    sudo apt install -y nodejs
@@ -186,7 +187,7 @@ APD runs on **Node.js** (a free, cross-platform JavaScript runtime). You only ne
 
 3. **Install dependencies** — run this command in the terminal:
    ```
-   npm install
+   npm ci
    ```
    This downloads all the libraries APD needs. It may take a minute.
 
@@ -197,7 +198,8 @@ APD runs on **Node.js** (a free, cross-platform JavaScript runtime). You only ne
 5. **Edit the `.env` file** with any text editor (Notepad, TextEdit, etc.) and fill in your values:
    - `UPSTASH_REDIS_REST_URL` — the REST URL from your Upstash dashboard
    - `UPSTASH_REDIS_REST_TOKEN` — the REST token from your Upstash dashboard
-   - `METEOBLUE_API_KEY` — your Meteoblue API key
+   - `METEOBLUE_API_KEY` — your Meteoblue API key, optional
+   - `METSERVICE_API_KEY` — your MetService Point Forecast API key, optional
    - `MASTER_PASSWORD` — optional when running locally; leave blank if you're the only user
    - `TELESCOPIUS_API_KEY` — optional; only needed for the Sky Dashboard's Discover panel
 
@@ -224,7 +226,7 @@ Open your browser and go to **http://localhost:3001** — APD is now running on 
 
 - To **stop** the server, press `Ctrl + C` in the terminal.
 - To **start it again** later, open a terminal in the same folder and run `npm start` (you don't need to rebuild unless the app has been updated).
-- To **update** to a newer version, download the latest ZIP from GitHub, extract it over the same folder, run `npm install` to pick up any new dependencies, then `npm run build` and `npm start`.
+- To **update** to a newer version, use a supported Node version, download the latest ZIP from GitHub, extract it over the same folder, keep `.env`, run `npm ci`, then `npm run build` and `npm start`.
 
 ---
 
@@ -232,7 +234,7 @@ Open your browser and go to **http://localhost:3001** — APD is now running on 
 
 ### 🌙 Weather Dashboard
 
-- **Dual-source forecasts** — Meteoblue (primary) + Met Office via Open-Meteo, shown side-by-side for cross-validation
+- **Multi-source forecasts** — an all-provider average above equally styled provider rows, with individual source choices for night/day heatmaps and hourly detail; existing graphics and provider score formulas are retained
 - **Night-only filtering** — displays only astronomically relevant hours (4 h before night → 10 AM after)
 - **Astrophotography score** — 0–100 composite score per night per source, weighted from cloud cover (80%) and precipitation (20%); labels: Excellent / Very Good / Good / Fair / Poor / Very Poor
 - **7-day expandable forecast** — per-day rows with hourly cards showing cloud cover, temperature, precipitation, wind, humidity
@@ -281,7 +283,9 @@ You don't need to own a server or know how to manage infrastructure. Platforms l
 |---------|---------------|------|
 | **Render** (or similar) | Runs the APD server in the cloud | Free tier available |
 | **Upstash Redis** | Stores your settings: location, camera profiles, favourites, API keys | Free tier available |
-| **Meteoblue API** | Weather forecast data (cloud cover, temperature, wind, etc.) | Free 1-year trial for personal use |
+| **Open-Meteo, MET Norway, 7Timer** | Keyless weather and native astronomy forecasts | Subject to provider terms and usage limits |
+| **Meteoblue API** (Optional) | Additional weather, Moon and sky-brightness data | Eligible trial or paid credits |
+| **MetService API** (Optional) | Additional worldwide Point Forecast data | Account/model access and production-use terms apply |
 | **Telescopius API** (Optional) | Sky Dashboard Discover panel — DSO highlights, target search, observing lists | Patron-only |
 | **cron-job.org** (Optional) | Triggers weather downloads twice daily (optional but recommended) | Free |
 | **GitHub** (Optional) | Hosts your copy of the code; cloud platforms deploy from it | Free |
@@ -306,16 +310,22 @@ APD stores your observer location, camera FOVs, favourite targets, and runtime-c
 
 Free tier: 256 MB storage, 500,000 commands/month — well within personal use.
 
-### Meteoblue API — free 1-year trial, then paid (required for weather)
+### Meteoblue API — optional
 
-Meteoblue provides the primary weather forecast data. They offer a **free 1-year API trial** for non-commercial / personal use, with 5,000 API calls per year. APD uses roughly 2 calls per download run, so ~2,500 downloads before the limit is reached — enough for many years of twice-daily downloads.
+Meteoblue adds weather, Moon and sky-brightness data. Its API uses package-dependent credits. Check the current trial or paid plan for your account. APD requests `basic-1h_clouds-1h_sunmoon_moonlight-1h` once per weather refresh.
 
 1. Create a free account at [meteoblue.com](https://www.meteoblue.com)
 2. Click your account icon (top right) → **Account Overview**
 3. Click the **Weather API** box and confirm non-commercial use to activate the free year
 4. Your API key appears in the API section of your account
 
-After the free year you can purchase credit packages from the same page. Without a key the weather dashboard shows a placeholder message; no forecast data will load.
+Without a key, Meteoblue is omitted from forecast cards and selectors; the other providers continue independently.
+
+### MetService Point Forecast API — optional
+
+Obtain a key for the [Point Forecast API](https://data.metservice.com/product/point-forecast-api), then set `METSERVICE_API_KEY` or save it in Settings → API Keys. The environment value takes priority over a stored key. Requests use the server-side `x-api-key` header; the browser receives key-status metadata only.
+
+The API covers the world, but accessible models depend on the account. Do not assume a free Starter account permits production use; check the provider's current terms. APD requests cloud cover, temperature, humidity, wind and precipitation rate. Rain rate is labelled `mm/h`, not presented as a fabricated accumulated rainfall total. The app works without this optional key.
 
 ### Telescopius API — patron-only, optional
 
@@ -359,7 +369,7 @@ APD is a Node.js Express app that serves both the API and the built React fronte
    - **Environment**: `Node`
    - **Build command**: `npm ci --include=dev && npm run build`
    - **Start command**: `npm start`
-   - **Node version**: `22` (or `20`+)
+   - **Node version**: `22.22.2` or a later Node 22 release
 4. Add environment variables under the **Environment** tab:
    - Add each variable as a **key-value pair**, **or** click **"Add from .env"** to paste / import your local `.env` file in bulk (this is a Render dashboard feature, not a file upload — the variables are stored securely by Render).
    - Do **not** use Render's *Secret Files* for this — secret files are mounted at `/etc/secrets/` and are not automatically loaded as environment variables.
@@ -384,7 +394,8 @@ On every push to `main`, Render will redeploy automatically.
 | `UPSTASH_REDIS_REST_TOKEN` | **Yes** | Upstash Redis REST token |
 | `MASTER_PASSWORD` | No | Master password — if unset, all routes are open (fine for private/personal use behind a trusted network) |
 | `SESSION_SECRET` | No | Secret for signing session tokens — auto-generated if unset, but set it explicitly in production so sessions survive restarts |
-| `METEOBLUE_API_KEY` | No* | Meteoblue API key — without it, only Met Office data is shown; can also be set at runtime via Settings UI |
+| `METEOBLUE_API_KEY` | No* | Optional Meteoblue forecast; keyless providers continue without it |
+| `METSERVICE_API_KEY` | No* | Optional MetService Point Forecast key; can also be saved in Settings |
 | `TELESCOPIUS_API_KEY` | No* | Telescopius API key — without it, sky chart DSO features are disabled; can also be set at runtime via Settings UI |
 | `OBSERVER_LAT` | No | Default observer latitude (e.g. `52.6278`) |
 | `OBSERVER_LON` | No | Default observer longitude (e.g. `-1.2983`) |
@@ -446,11 +457,23 @@ A cron service calls the trigger endpoint on a schedule to pre-fetch fresh data 
 
 ### Email Notifications
 
-You can pair APD with an automation platform (e.g. [Make.com](https://make.com), [n8n](https://n8n.io), Zapier) to send an email digest after each scheduled refresh:
+Use a script, scheduler or automation service to fetch the complete forecast and send a notification after a scheduled refresh:
 
 - **Trigger**: schedule a second HTTP call ~5 minutes after the cron refresh
-- **Content**: fetch the forecast from `<your-app-url>/api/weather/refresh/trigger?key=<your-key>` (shown in Settings after you generate the key)
-- **Smart Email**: construct it from the `astrophotography_score` field to highlight clear nights (simple AI can be very effective here — e.g. "Tonight looks excellent for astrophotography with only 10% cloud cover, while tomorrow is poor with 80% clouds.")
+- **Content**: fetch `https://your-apd.example.com/api/weather/summary?v=2`. Check that the HTTP request succeeds and `schemaVersion` is `2` before processing it. Report HTTP failures through your own workflow instead of treating them as a forecast.
+- **Classification**: use `nightSessions[].average.summary.score.value` and the accompanying contributor/coverage metadata, rather than hardcoding two provider names.
+
+### General AI prompt example
+
+The [copyable prompt](docs/ai-forecast-prompt.md) works with any AI tool that accepts text and JSON. Replace `<CURRENT_TIMESTAMP_ISO_8601>` with the current timestamp, `https://your-apd.example.com/` with your dashboard URL, and `<APD_FORECAST_JSON>` with the successful v2 response. No platform-specific tokens are required.
+
+The example uses APD's **Good threshold of 60**, gives today's night priority over tomorrow, and requires complete aggregate cloud/score coverage. It returns only:
+
+```json
+{"subject":"GOOD NIGHT TODAY","body":"https://your-apd.example.com/"}
+```
+
+The other subjects are `GOOD NIGHT TOMORROW` and `Astro Forecast`. The latter is used when neither today nor tomorrow qualifies, including when only later nights look good. Dates use the response's observer timezone, not the automation server's timezone. Adjust the stated threshold if your observing requirements differ.
 
 ---
 
@@ -486,17 +509,19 @@ APD requires a few third-party accounts and some technical setup. If you need he
 | Service | Purpose |
 |---------|---------|
 | **Upstash Redis** | Stores weather data, FOVs, favorites, API keys, observer location — shared across deploys |
-| **Meteoblue API** | Primary weather data (cloud cover, precipitation, temperature, wind, humidity, day/night) |
-| **Open-Meteo** | Met Office UK model data (cloud cover, precipitation, temperature) |
+| **Meteoblue API** | Optional weather, probability, wind, humidity, Moon and sky-brightness data |
+| **Open-Meteo** | Met Office Global/UKV, ECMWF, GFS and ICON Global |
+| **MET Norway / 7Timer** | Worldwide forecast and native three-hour astronomy ranges |
+| **MetService API** | Optional worldwide Point Forecast data |
 | **Telescopius API** | DSO highlights, search, solar system data for the sky dashboard |
 
 ### Data Flow
 
 1. Client requests weather data from the Express API
 2. Backend checks if cached data is fresh (< 24 hours old, after 2:30 PM yesterday)
-3. If stale, fetches from Meteoblue + Met Office APIs using the shared observer location
-4. Both datasets are cached to Redis and returned
-5. Frontend processes both datasets using Meteoblue's night/day detection for consistency
+3. If stale, refreshes configured weather sources independently using the shared observer location
+4. Each provider's data or explicit failure status is cached independently in Redis
+5. The server normalizes timestamps and units and builds the complete v2 result used by both the dashboard and API; the original summary response remains compatible
 6. All users share the same cached data
 
 ---
@@ -510,6 +535,8 @@ The app uses a single **master password** for access control.
 - Sessions use HMAC-SHA256 signed tokens stored in httpOnly cookies (30-day expiry)
 - The cron trigger endpoint uses a separate token-based auth (not session cookies) — see [Automated Weather Refresh](#-automated-weather-refresh)
 - Login page served at `/login`
+
+With password protection enabled, browser login/logout and protected write requests must come from the same origin or an origin listed in `CORS_ORIGIN`. Local development also permits the standard localhost/loopback addresses used by Vite. Untrusted or opaque browser origins receive HTTP 403. Server-side clients without an `Origin` header retain their existing authentication, and the public cron trigger keeps its token-based contract.
 
 ### Public Endpoints (always accessible, no auth required)
 
@@ -550,7 +577,8 @@ cp .env.example .env
 | `MASTER_PASSWORD` | No | Master password — if unset, auth is disabled |
 | `SESSION_SECRET` | No | Secret for signing session tokens — auto-generated if unset |
 | `CRON_TRIGGER_TOKEN` | No | Cron trigger token — if set, the trigger endpoint accepts this value; otherwise manage via Settings UI → Redis |
-| `METEOBLUE_API_KEY` | No* | Meteoblue API key — without it, only Met Office data is shown; can also be set via UI → Redis |
+| `METEOBLUE_API_KEY` | No* | Optional Meteoblue key; keyless sources continue without it |
+| `METSERVICE_API_KEY` | No* | Optional MetService Point Forecast key; environment value takes priority over Settings |
 | `TELESCOPIUS_API_KEY` | No* | Telescopius API key — without it, sky chart DSO features are disabled; can also be set via UI → Redis |
 | `OBSERVER_LAT` | No | Default observer latitude (default: 52.6278) |
 | `OBSERVER_LON` | No | Default observer longitude (default: -1.2983) |
@@ -567,7 +595,7 @@ cp .env.example .env
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22.22.2+ (Node 22 recommended; see `package.json` for supported LTS versions)
 - npm
 - Upstash Redis account (free tier works)
 
@@ -576,7 +604,7 @@ cp .env.example .env
 ```bash
 git clone <repository-url>
 cd apd
-npm install
+npm ci
 cp .env.example .env
 # Edit .env with your credentials
 ```
@@ -613,14 +641,21 @@ Vite proxies `/api` requests to `localhost:3001` automatically.
 Unit tests run with [Vitest](https://vitest.dev/) and cover both server utilities and frontend logic:
 
 - `src/utils/weatherUtils.test.ts` — Meteoblue data processing, scoring, and night detection
-- `server/utils/weatherProcessor.test.js` — weather summary generation for the LLM endpoint
+- `server/utils/weatherProcessor.test.js` — legacy summary compatibility
+- `server/services/forecastProviders.test.js` — provider schemas, units, native ranges, errors and cache-header handling
+- `server/utils/forecastProcessor.test.js` — per-hour averaging, coverage, rain intervals, scores and observer timezones
+- `server/services/weatherService.test.js` — independent refresh, persistence failures, configuration, repeated/concurrent reads and recovery
+- `server/utils/forecastPresentation.test.js` — preserved provider values, card styling and exact heatmap mapping
+- `server/routes.test.js` — public summary compatibility, protected key controls, persistence, environment precedence and production authentication through the real HTTP server
+- `src/services/weatherService.test.ts` — complete-response consumption, failed-refresh status and actionable HTTP errors
+- `server/utils/skychartSecurity.test.js` — stored names, Discover attributes and upstream time values remain text
 
 ```bash
 npm test              # run tests
 npm run test:coverage # run with coverage report
 ```
 
-The CI workflow (`.github/workflows/ci.yml`) runs on every push and pull request to `main` — it lints, type-checks, tests, and builds against **Node.js 18, 20, and 22** in parallel.
+The CI workflow (`.github/workflows/ci.yml`) runs on every push and pull request to `main`. It lints, type-checks, tests and builds against **Node.js 22**. The release workflow uses the same Node major version.
 
 ### Releases
 
@@ -636,26 +671,33 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for developmen
 
 ## 🌤️ Weather Data Sources
 
-### Primary: Meteoblue
+### Sources and coverage
 
-- **Package**: `basic-1h_clouds-1h_sunmoon_moonlight-1h`
-- **Strengths**: Complete dataset with night/day detection, temperature, wind, humidity
-- **Usage**: Primary calculations, night/day filtering, reference hours, statistics
+| Source | Coverage | Configuration |
+| --- | --- | --- |
+| Meteoblue | Worldwide | Optional API key; existing package unchanged |
+| Met Office Global 10 km | Worldwide | Existing keyless Open-Meteo model |
+| Met Office UKV 2 km | UK and Ireland model domain | Keyless; outside-domain locations are not provider outages |
+| ECMWF IFS, GFS, ICON Global | Worldwide | Keyless Open-Meteo models |
+| MET Norway | Worldwide, with finer regional models | No key; server sends identifying User-Agent and honours cache headers |
+| 7Timer ASTRO | Worldwide; native three-hour samples, normally 72 hours | No key; cloud/seeing/transparency remain categorical ranges |
+| MetService | Worldwide, with account-dependent model access | Optional API key; production-use terms apply |
 
-### Secondary: Met Office (via Open-Meteo)
+Coverage references: [Open-Meteo model documentation](https://open-meteo.com/en/docs), [UKV coverage](https://open-meteo.com/en/docs/ukmo-api), [MET Norway](https://api.met.no/doc/locationforecast/datamodel), [7Timer](https://www.7timer.info/doc.php?lang=en), [MetService](https://developer.metservice.com/docs/api-catalog/point-forecast-api/).
 
-- **Model**: `ukmo_global_deterministic_10km`
-- **Strengths**: High-quality UK-specific forecasts
-- **Usage**: Comparative forecasting, cross-validation
-- **Note**: Used by Scope Nights — less precise but more optimistic than the 2km model
+The selected Open-Meteo models are `ukmo_global_deterministic_10km`, `ukmo_uk_deterministic_2km`, `ecmwf_ifs`, `gfs_global` and `icon_global`. Actual returned horizons and missing fields are reported, not replaced with another model's data. Hourly API output does not imply native hourly model resolution.
 
 ### Integration
 
-- **Time Structure**: Uses Meteoblue's time structure and night/day detection for consistency
-- **Display**: Two separate sections showing identical layouts with different data sources
-- **Reference Hours**: Both sources show 4 hours before night + hours until 10am after night
+- **Time Structure**: explicit UTC instants and observer-local dates. Existing provider day/night flags and the early-morning night-date assignment are retained; the API reports expected timestamps and coverage
+- **Display**: the all-provider average first, then provider rows in the existing night/day cards. Both heatmaps and hourly views default to the average and offer individual sources
+- **Reference Hours**: Numeric forecasts show supplied reference samples from 4 hours before night through 10am after night
 - **Statistics**: Each source calculates independent astrophotography scores
 - **Scoring difference**: Meteoblue score uses cloud cover (80%) + precipitation (20%). Met Office score uses cloud cover only (Met Office reports precipitation in mm rather than %, so the precipitation penalty is not applied). Both are scaled 0–100.
+- **Average**: arithmetic mean of actual comparable values per timestamp, then session summaries from those hourly aggregates. The average score is the mean of available provider scores per timestamp, then across session timestamps. It is not a confidence percentage
+- **Missing data**: optional unconfigured providers are omitted from forecast choices. Actual errors, geographic limits, shorter horizons and individual missing fields remain distinct. Nulls are never clear weather or zero rain
+- **Rain**: probability, accumulation and rate are separate. Only matching one-hour accumulation intervals enter hourly rain-amount averages; multi-hour totals are not repeated. Incomplete session rain totals remain unavailable
+- **Overlap**: MET Norway's global data uses ECMWF and 7Timer is GFS-derived. Source counts are not independent model votes
 
 ---
 
@@ -666,7 +708,7 @@ Both the weather dashboard and sky dashboard share a single observer location st
 - **Default**: Loaded from `OBSERVER_LAT`/`OBSERVER_LON` env vars
 - **Runtime override**: Set via UI in either dashboard → saved to Redis; the Settings page also provides a “Use my location” geolocation button
 - **API**: `GET /PUT /api/location` — shared by both dashboards
-- Weather API calls (Meteoblue and Open-Meteo) use the shared location dynamically
+- All weather integrations use the shared location dynamically
 
 ---
 
@@ -689,8 +731,15 @@ Both the weather dashboard and sky dashboard share a single observer location st
 | `GET` | `/api/weather/status` | Yes | Download status only |
 | `GET` | `/api/weather/metoffice` | Yes | Cached Met Office data |
 | `GET` | `/api/weather/summary` | **No** | LLM-friendly processed forecast |
+| `GET` | `/api/weather/summary?v=2` | **No** | Complete normalized night/day/hourly forecast, all sources, native data, averages, scores, coverage and errors |
 | `GET` | `/api/weather/meteoblue/key-status` | Yes | Check if Meteoblue key is configured |
 | `PUT` | `/api/weather/meteoblue/key` | Yes | Save Meteoblue API key to Redis |
+| `GET` | `/api/weather/metservice/key-status` | Yes | MetService key configured/source metadata only |
+| `PUT` | `/api/weather/metservice/key` | Yes | Save optional MetService key to Redis |
+
+The v2 response includes `schemaVersion`, `generatedAt`, `timeZone`, `location`, `units`, `providers`, `scoreDefinition`, `aggregation`, `summary`, `nightSessions` and `daySessions`. Each session includes `start`, `end`, `durationHours`, `expectedTimestamps`, `average.summary`, `average.hourly`, provider summaries/hourly/reference series under `sources`, and native 7Timer data under `atmosphere`. Provider-level hourly series retain supplied fields beyond the comparison sessions. Numeric metrics include `value`, `unit`, `sourceIds`, `sampleCount`, `expectedSampleCount`, `coverage` and `unavailableReason`. The API never includes key values.
+
+The request without `v=2` retains its original response fields and scores. Existing raw-data and refresh response shapes remain unchanged, and both summary versions stay public. Browser writes follow the [origin checks](#-authentication) described above. See [the general AI prompt example](#general-ai-prompt-example) for a consumer of the complete response.
 
 ### Cron Trigger Token
 
@@ -774,7 +823,7 @@ apd/
 ├── screenshots/                    # README screenshots
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci.yml                  # Lint, typecheck, test, build · Node 18/20/22
+│   │   ├── ci.yml                  # Lint, typecheck, test, build · Node 22
 │   │   └── release.yml             # Automated release via release-it
 │   ├── ISSUE_TEMPLATE/             # Bug report & feature request templates
 │   └── PULL_REQUEST_TEMPLATE.md

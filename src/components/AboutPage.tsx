@@ -5,7 +5,7 @@ import { Cloud, Star, Telescope, Home, Settings } from "lucide-react";
 
 const WEATHER_FEATURES = [
   "Night-only hourly filtering (4 h before dark → 10 AM)",
-  "Dual-source forecasts: Meteoblue + Met Office side-by-side",
+  "All-provider average plus individual forecasts from Open-Meteo models, MET Norway, 7Timer, optional Meteoblue and MetService",
   "Astrophotography score 0–100 per night per source",
   "7-day expandable forecast rows with click-to-expand hourly cards",
   "Hourly cards: cloud cover, temperature, precipitation, wind, humidity",
@@ -17,7 +17,7 @@ const WEATHER_FEATURES = [
   "Live SDO/HMI solar imagery + sunspot region images",
   "Auto twice-daily weather refresh + manual trigger from header",
   "Download status indicator with last-download timestamp",
-  "LLM-friendly summary endpoint — GET /api/weather/summary (always public, no auth) — structured JSON for AI/LLM automation: daily email summaries, chatbot integrations, scheduled forecast alerts",
+  "Complete forecast endpoint — GET /api/weather/summary?v=2 (always public, no auth) — night/day/hourly data, all sources, native astronomy fields, averages, scores, coverage and errors; the original summary remains compatible",
 ];
 
 const SKY_FEATURES = [
