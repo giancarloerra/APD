@@ -123,7 +123,7 @@ You will still need an Upstash Redis account and an internet connection. The key
 
 ### What you need to install first
 
-APD requires **Node.js 22.22.2 or a later supported LTS version**. Node 18 and 20 are no longer supported by the development toolchain. Existing settings and stored data do not need a migration.
+APD supports **Node.js 22.22.2 or later 22.x, 24.15.0 or later 24.x, or 26+**. Node 18 and 20 are no longer supported by the development toolchain. Existing settings and stored data do not need a migration.
 
 <details>
 <summary><strong>Windows</strong></summary>
@@ -694,9 +694,9 @@ Open-Meteo's detected observer timezone is retained for display. When a new mode
 - **Time Structure**: explicit UTC instants and observer-local dates. Existing provider day/night flags and the early-morning night-date assignment are retained; the API reports expected timestamps and coverage
 - **Display**: the all-provider average first, then provider rows in the existing night/day cards. Both heatmaps and hourly views default to the average and offer individual sources
 - **Reference Hours**: Numeric forecasts show supplied reference samples from 4 hours before night through 10am after night
-- **Statistics**: Each source calculates independent astrophotography scores
+- **Statistics**: Sources with numeric cloud data calculate independent astrophotography scores. 7Timer's categorical cloud, seeing and transparency values are not scored
 - **Scoring difference**: Meteoblue score uses cloud cover (80%) + precipitation (20%). Met Office score uses cloud cover only (Met Office reports precipitation in mm rather than %, so the precipitation penalty is not applied). Both are scaled 0–100.
-- **Average**: arithmetic mean of actual comparable values per timestamp, then session summaries from those hourly aggregates. The average score is the mean of available provider scores per timestamp, then across session timestamps. It is not a confidence percentage
+- **Average**: arithmetic mean of actual comparable values per timestamp, then session summaries from those hourly aggregates. The average score is the mean of available numeric provider scores per timestamp, then across session timestamps. 7Timer's categorical cloud, seeing and transparency values are excluded from numeric cloud averages and scores. The score is not a confidence percentage
 - **Missing data**: optional unconfigured providers are omitted from forecast choices. Actual errors, geographic limits, shorter horizons and individual missing fields remain distinct. Nulls are never clear weather or zero rain
 - **Rain**: probability, accumulation and rate are separate. Average and added-provider session/hourly/reference amounts cover the matching forward one-hour interval; multi-hour totals are not repeated. Provider-level hourly data retains the native fields and intervals. The original Meteoblue and Met Office per-source calculations remain unchanged. Incomplete session rain totals remain unavailable
 - **Overlap**: MET Norway's global data uses ECMWF and 7Timer is GFS-derived. Source counts are not independent model votes
