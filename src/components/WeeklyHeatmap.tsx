@@ -1,6 +1,8 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { DayData } from "../types/weather";
 import { getScoreColor } from "../utils/weatherUtils";
+import type { ForecastProvider, ForecastSession } from "../types/forecast";
+import { formatBand } from "../utils/forecastUtils";
 
 interface MergedDay {
   date: string;
@@ -9,8 +11,10 @@ interface MergedDay {
 }
 
 interface Props {
-  mergedDays: MergedDay[];
+  mergedDays?: MergedDay[];
   isSolar?: boolean;
+  sessions?: ForecastSession[];
+  providers?: ForecastProvider[];
 }
 
 // Night hours in display order (evening → early morning)
@@ -65,12 +69,33 @@ function shortDayLabel(date: string): string {
   return `${weekday} ${d.getDate()}`;
 }
 
-export function WeeklyHeatmap({ mergedDays, isSolar = false }: Props) {
-  if (mergedDays.length === 0) return null;
+export function WeeklyHeatmap({ mergedDays = [], isSolar = false, sessions, providers = [] }: Props) {
+  const [source, setSource] = useState("average");
+  const days = sessions ?? mergedDays;
+  if (days.length === 0) return null;
+  const choices = providers.filter(p => p.status !== "not_configured" && p.status !== "outside_coverage");
+  const selected = source === "average" || choices.some(p => p.id === source) ? source : "average";
 
-  const hours = isSolar ? SOLAR_HOURS : NIGHT_HOURS;
+  const allHours = isSolar ? SOLAR_HOURS : NIGHT_HOURS;
+  const hours = selected === "timer" && sessions ? allHours.filter(hour => sessions.some(s => s.atmosphere.samples.some(h => +h.localTime.slice(0, 2) === hour))) : allHours;
   const cellH = 12;
-  const cellW = Math.max(22, Math.floor(440 / mergedDays.length));
+  const cellW = Math.max(22, Math.floor(440 / days.length));
+  const coverAt = (date: string, hour: number) => {
+    const session = sessions?.find(s => s.date === date);
+    if (!session) return { value: getCloudCoverForHour(mergedDays.find(d => d.date === date)!, hour), label: "" };
+    if (selected === "timer") {
+      const band = session.atmosphere.samples.find(h => +h.localTime.slice(0, 2) === hour)?.cloudBand;
+      // Only the colour bucket uses a representative midpoint. The data and
+      // tooltip retain the native band; this never enters an average or score.
+      return { value: band && band.range[0] !== null && band.range[1] !== null ? (band.range[0] + band.range[1]) / 2 : null, label: band ? `${formatBand(band)} cloud band · native 3-hour sample` : "No native sample" };
+    }
+    if (selected === "average") {
+      const metric = session.average.hourly.find(h => +h.localTime.slice(0, 2) === hour)?.cloudCover;
+      return { value: metric?.value == null ? null : Math.round(metric.value), label: metric?.value == null ? "No data" : `${Math.round(metric.value)}% cloud cover · ${metric.sourceIds.length} sources` };
+    }
+    const entry = session.sources[selected]?.hourly.find(h => +h.localTime.slice(0, 2) === hour);
+    return { value: entry?.cloudCover ?? null, label: entry?.cloudCover == null ? "No data" : `${entry.cloudCover}% cloud cover` };
+  };
 
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
@@ -79,11 +104,13 @@ export function WeeklyHeatmap({ mergedDays, isSolar = false }: Props) {
         Cover Overview
       </h3>
 
+      {sessions && <label className="text-sm text-slate-400 flex items-center gap-2 mb-3">Source <select aria-label={`${isSolar ? "Day" : "Night"} heatmap source`} className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-300 text-sm" value={selected} onChange={event => setSource(event.target.value)}><option value="average">Average · All available</option>{choices.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+
       <div className="overflow-x-auto">
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: `32px repeat(${mergedDays.length}, ${cellW}px)`,
+            gridTemplateColumns: `32px repeat(${days.length}, ${cellW}px)`,
             gap: "1px",
             width: "fit-content",
             marginLeft: "auto",
@@ -92,7 +119,7 @@ export function WeeklyHeatmap({ mergedDays, isSolar = false }: Props) {
         >
           {/* Header row */}
           <div />
-          {mergedDays.map((d) => (
+          {days.map((d) => (
             <div
               key={d.date}
               className="text-center font-medium text-slate-300"
@@ -111,13 +138,14 @@ export function WeeklyHeatmap({ mergedDays, isSolar = false }: Props) {
               >
                 {String(hour).padStart(2, "0")}h
               </div>
-              {mergedDays.map((d) => {
-                const cover = getCloudCoverForHour(d, hour);
+              {days.map((d) => {
+                const cell = coverAt(d.date, hour);
+                const cover = cell.value;
                 return (
                   <div
                     key={`${d.date}-${hour}`}
                     title={
-                      cover !== null ? `${cover}% cloud cover` : "No data"
+                      cell.label || (cover !== null ? `${cover}% cloud cover` : "No data")
                     }
                     style={{
                       height: cellH,
@@ -137,10 +165,10 @@ export function WeeklyHeatmap({ mergedDays, isSolar = false }: Props) {
           >
             ⭐
           </div>
-          {mergedDays.map((d) => {
-            const score =
-              d.meteoblue?.astrophotographyScore ??
-              d.metoffice?.astrophotographyScore;
+          {days.map((d) => {
+            const session = sessions?.find(s => s.date === d.date);
+            const legacy = mergedDays.find(day => day.date === d.date);
+            const score = session ? selected === "average" ? session.average.summary.score.value : selected === "timer" ? null : session.sources[selected]?.summary.score.value : legacy?.meteoblue?.astrophotographyScore ?? legacy?.metoffice?.astrophotographyScore;
             return (
               <div
                 key={`score-${d.date}`}
@@ -174,7 +202,7 @@ export function WeeklyHeatmap({ mergedDays, isSolar = false }: Props) {
           </div>
         ))}
         <span className="text-slate-600" style={{ fontSize: "0.6rem" }}>
-          {describeDataSources(mergedDays)}
+          {sessions ? selected === "average" ? "Cloud Cover · All available forecasts averaged" : selected === "timer" ? "Cloud Cover · Native 3-hour bands" : `${choices.find(p => p.id === selected)?.name} · Individual forecast` : describeDataSources(mergedDays)}
         </span>
       </div>
     </div>

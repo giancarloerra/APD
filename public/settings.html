@@ -134,6 +134,13 @@
     <div class="actions">
       <button class="btn btn-secondary" onclick="saveApiKey('telescopius')">Update Telescopius Key</button>
     </div>
+    <div class="field" style="margin-top:14px">
+      <label>MetService API Key (Optional)</label>
+      <div class="status-row" id="status-metservice"></div>
+      <input type="text" id="inp-metservice-key" class="api-key-input" placeholder="Enter MetService API key">
+    </div>
+    <p style="font-size:0.8rem;color:#94a3b8;margin-top:8px">Optional worldwide Point Forecast API. Account model access and production-use terms apply. Other forecasts work without this key.</p>
+    <div class="actions"><button class="btn btn-secondary" onclick="saveApiKey('metservice')">Update MetService Key</button></div>
   </div>
 
   <!-- Automated Weather Refresh -->
@@ -183,7 +190,7 @@
       <div>
         <div style="font-size:0.8rem;font-weight:600;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">🌙 Weather Dashboard</div>
         <ul style="list-style:none;padding:0;margin:0;font-size:0.8rem;color:#94a3b8;line-height:1.85">
-          <li>Dual-source: Meteoblue + Met Office</li>
+          <li>All-provider average + individual forecasts</li>
           <li>Night-only hourly forecasts</li>
           <li>Astrophotography score (0–100)</li>
           <li>7-day expandable day rows</li>
@@ -243,6 +250,7 @@
 
       // API key statuses
       renderKeyStatus('meteoblue', s.apiKeys.meteoblue);
+      renderKeyStatus('metservice', s.apiKeys.metservice);
       renderKeyStatus('telescopius', s.apiKeys.telescopius);
 
       // Cron trigger
@@ -336,21 +344,26 @@
   }
 
   async function saveApiKey(which) {
-    const inputId = which === 'meteoblue' ? 'inp-meteoblue-key' : 'inp-telescopius-key';
+    const inputId = which === 'meteoblue' ? 'inp-meteoblue-key' : which === 'metservice' ? 'inp-metservice-key' : 'inp-telescopius-key';
     const key = document.getElementById(inputId).value.trim();
     if (!key) { toast('Enter an API key first', true); return; }
-    const url = which === 'meteoblue' ? '/api/weather/meteoblue/key' : '/api/skychart/telescopius/key';
+    const url = which === 'meteoblue' ? '/api/weather/meteoblue/key' : which === 'metservice' ? '/api/weather/metservice/key' : '/api/skychart/telescopius/key';
     try {
       const r = await fetch(url, {
         method: 'PUT', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key }),
       });
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        let failure;
+        try { failure = await r.json(); }
+        catch { throw new Error('Failed to save key: HTTP ' + r.status + ' (invalid JSON response)'); }
+        throw new Error(failure?.error || 'Failed to save key: HTTP ' + r.status);
+      }
       document.getElementById(inputId).value = '';
       toast(which + ' key updated');
       loadSettings();
-    } catch { toast('Failed to save key', true); }
+    } catch (error) { toast(error.message || 'Failed to save key', true); }
   }
 
   function renderCronTrigger(cron) {

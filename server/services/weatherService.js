@@ -1,14 +1,20 @@
+import { PROVIDERS, ProviderError, fetchAdditionalProvider, hasUnalignedHourlyClock, normalizeMeteoblue, normalizeOpenMeteo, requestProvider } from "./forecastProviders.js";
+import { createCompleteForecast } from "../utils/forecastProcessor.js";
+import { createWeatherSummary } from "../utils/weatherProcessor.js";
+
 // URLs are now built dynamically — key and location come from server/index.js exports
 const REDIS_KEY_WEATHER_DATA = "weather:meteoblue_data";
 const REDIS_KEY_METOFFICE_DATA = "weather:metoffice_data";
 const REDIS_KEY_DOWNLOAD_STATUS = "weather:download_status";
+const providerKey = id => `weather:provider:${id}`;
 
 // Late-bind helpers from index.js to avoid circular import at module load time
-let _getMeteoblueKey, _getObserverLocation, _redis;
-export function bindHelpers(getMeteoblueKey, getObserverLocation, redis) {
+let _getMeteoblueKey, _getObserverLocation, _redis, _getMetServiceKey;
+export function bindHelpers(getMeteoblueKey, getObserverLocation, redis, getMetServiceKey = async () => null) {
   _getMeteoblueKey = getMeteoblueKey;
   _getObserverLocation = getObserverLocation;
   _redis = redis;
+  _getMetServiceKey = getMetServiceKey;
   weatherService._startInit();
 }
 
@@ -22,12 +28,13 @@ function buildMetOfficeUrl(lat, lon) {
   return `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation,cloud_cover,temperature_2m,is_day&models=ukmo_global_deterministic_10km`;
 }
 
-class WeatherService {
+export class WeatherService {
   constructor() {
     this.downloadStatus = { isDownloading: false };
     this.statusListeners = [];
     this.initialized = false;
     this._initPromise = null;
+    this._downloadPromise = null;
   }
 
   _startInit() {
@@ -132,6 +139,21 @@ class WeatherService {
   }
 
   async downloadWeatherData() {
+    // The complete API and legacy routes can request the same refresh together.
+    if (this._downloadPromise) return this._downloadPromise;
+    this._downloadPromise = this._downloadWeatherData();
+    try { return await this._downloadPromise; }
+    catch (error) {
+      this.downloadStatus.isDownloading = false;
+      this.downloadStatus.error = error.message;
+      this.notifyStatusChange();
+      await this.saveDownloadStatus();
+      throw error;
+    }
+    finally { this._downloadPromise = null; }
+  }
+
+  async _downloadWeatherData() {
     this.downloadStatus.isDownloading = true;
     this.downloadStatus.error = undefined;
     this.notifyStatusChange();
@@ -145,16 +167,18 @@ class WeatherService {
     let metofficeData = null;
     let meteoblueError = null;
     let metofficeError = null;
+    let meteoblueFailure = null;
+    let metofficeFailure = null;
 
     // Try Meteoblue (requires API key)
     const meteoblueKey = _getMeteoblueKey ? await _getMeteoblueKey() : null;
     if (meteoblueKey) {
       try {
         console.log("📡 Downloading weather data from Meteoblue...");
-        const resp = await fetch(buildMeteoblueUrl(meteoblueKey, loc.lat, loc.lon, loc.alt));
-        if (!resp.ok) throw new Error(`Meteoblue HTTP error! status: ${resp.status}`);
-        meteoblueData = await resp.json();
+        const result = await requestProvider(buildMeteoblueUrl(meteoblueKey, loc.lat, loc.lon, loc.alt), { secret: meteoblueKey });
+        meteoblueData = result.data;
       } catch (e) {
+        meteoblueFailure = e;
         meteoblueError = e.message;
         console.error("❌ Meteoblue download failed:", e.message);
       }
@@ -166,10 +190,10 @@ class WeatherService {
     // Always try Met Office (free, no key required)
     try {
       console.log("📡 Downloading weather data from Met Office (Open-Meteo)...");
-      const resp = await fetch(buildMetOfficeUrl(loc.lat, loc.lon));
-      if (!resp.ok) throw new Error(`Met Office HTTP error! status: ${resp.status}`);
-      metofficeData = await resp.json();
+      const result = await requestProvider(buildMetOfficeUrl(loc.lat, loc.lon));
+      metofficeData = result.data;
     } catch (e) {
+      metofficeFailure = e;
       metofficeError = e.message;
       console.error("❌ Met Office download failed:", e.message);
     }
@@ -194,12 +218,44 @@ class WeatherService {
       try { await _redis.del(REDIS_KEY_METOFFICE_DATA); } catch (_) {}
     }
 
+    // Existing raw cache keys and response shapes remain unchanged.
+    // New provider records carry their own errors, location and coverage.
+    const previous = await Promise.all(PROVIDERS.map(provider => _redis.get(providerKey(provider.id))));
+    const metserviceKey = await _getMetServiceKey();
+    const results = await Promise.allSettled(PROVIDERS.map(async (provider, index) => {
+      const old = previous[index];
+      const sameLocation = old?.location?.lat === loc.lat && old?.location?.lon === loc.lon && old?.location?.alt === loc.alt;
+      const cached = sameLocation ? old : null;
+      let record;
+      try {
+        if ((provider.id === "meteoblue" && !meteoblueKey) || (provider.id === "metservice" && !metserviceKey)) {
+          record = { ...provider, location: loc, status: "not_configured", samples: [], error: null };
+        } else if (provider.id === "meteoblue" || provider.id === "metoffice") {
+          const raw = provider.id === "meteoblue" ? meteoblueData : metofficeData;
+          const error = provider.id === "meteoblue" ? meteoblueError : metofficeError;
+          if (!raw) throw (provider.id === "meteoblue" ? meteoblueFailure : metofficeFailure) ?? new Error(error);
+          const normalized = provider.id === "meteoblue" ? normalizeMeteoblue(raw) : normalizeOpenMeteo(raw);
+          record = { ...provider, ...normalized, location: loc, status: "ok", fetchedAt: new Date().toISOString(), error: null };
+        } else {
+          record = await fetchAdditionalProvider(provider, loc, cached, fetch, metserviceKey);
+        }
+      } catch (error) {
+        record = { ...provider, location: loc, status: error.code === "outside_geographic_coverage" ? "outside_coverage" : "error", samples: [], timeZone: error.timeZone ?? cached?.timeZone, fetchedAt: new Date().toISOString(), error: { code: error.code ?? "upstream_error", message: error.message, httpStatus: error.status ?? null } };
+      }
+      await _redis.set(providerKey(provider.id), record);
+      return record;
+    }));
+    const failed = results.find(result => result.status === "rejected");
+    if (failed) throw failed.reason;
+    const records = results.map(result => result.value);
+
     this.downloadStatus.isDownloading = false;
 
-    if (meteoblueData || metofficeData) {
+    if (records.some(record => record.status === "ok")) {
       this.downloadStatus.lastDownload = new Date();
       // Key missing → yellow warning (non-fatal); actual API error counted as warning too
-      this.downloadStatus.warning = (meteoblueError && !meteoblueData) ? meteoblueError : undefined;
+      const failures = records.filter(record => record.status === "error");
+      this.downloadStatus.warning = failures.length ? failures.map(record => `${record.name}: ${record.error.message}`).join("; ") : undefined;
       this.downloadStatus.error = undefined;
     } else {
       const errors = [meteoblueError, metofficeError].filter(Boolean).join("; ");
@@ -210,6 +266,49 @@ class WeatherService {
     this.notifyStatusChange();
     await this.saveDownloadStatus();
     return meteoblueData;
+  }
+
+  async getForecastRecords() {
+    await this.ensureInitialized();
+    if (this._downloadPromise) await this._downloadPromise;
+    let records = await Promise.all(PROVIDERS.map(provider => _redis.get(providerKey(provider.id))));
+    if (records.some(record => !record || hasUnalignedHourlyClock(record)) || this.shouldDownloadNewData() || this.downloadStatus.error || this.downloadStatus.isDownloading) {
+      await this.downloadWeatherData();
+      records = await Promise.all(PROVIDERS.map(provider => _redis.get(providerKey(provider.id))));
+    }
+    const loc = await _getObserverLocation();
+    if (records.some(record => !record)) throw new Error("Provider records were not persisted to Redis");
+    const current = records.map(record => record.location?.lat === loc.lat && record.location?.lon === loc.lon && record.location?.alt === loc.alt ? record : { ...record, status: "error", samples: [], error: { code: "location_changed", message: "Location changed; refresh forecasts" } });
+    return { records: current, location: loc };
+  }
+
+  async getWeatherSummary() {
+    const { records, location } = await this.getForecastRecords();
+    const [meteoblue, metoffice] = await Promise.all([
+      _redis.get(REDIS_KEY_WEATHER_DATA), _redis.get(REDIS_KEY_METOFFICE_DATA),
+    ]);
+    if (!meteoblue && !metoffice && !records.some(record => record.status === "ok")) return null;
+    // The original two lists do not depend on another provider's clock metadata.
+    // Added lists need a known observer timezone and day/night boundaries.
+    const hasTimeZone = records.some(record => record.id !== "metoffice" && record.timeZone);
+    const hasBoundaries = records.some(record => record.status === "ok" && (record.clock ?? record.samples).some(sample => sample.isDay === 0 || sample.isDay === 1));
+    const forecast = hasTimeZone && hasBoundaries
+      ? createCompleteForecast(records, location)
+      : { providers: records, location: { latitude: location.lat, longitude: location.lon }, nightSessions: null };
+    if (!meteoblue && !metoffice && !forecast.nightSessions) return null;
+    return createWeatherSummary(meteoblue, metoffice, forecast);
+  }
+
+  async getCompleteForecast() {
+    const { records: current, location: loc } = await this.getForecastRecords();
+    try {
+      if (current.every(record => record.error?.code === "location_changed")) throw new ProviderError("Location changed; refresh forecasts", "location_changed");
+      return createCompleteForecast(current, loc);
+    }
+    catch (error) {
+      error.providers = current.map(({ samples, cache, ...metadata }) => metadata);
+      throw error;
+    }
   }
 
   async getDownloadStatus() {

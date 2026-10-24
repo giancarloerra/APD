@@ -1,18 +1,21 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Star, Moon } from "lucide-react";
+import { ChevronDown, ChevronUp, Star, Moon, Layers, Cloud, Eye } from "lucide-react";
 import { DayData, HourlyData } from "../types/weather";
 import {
   getScoreColor,
   getScoreLabel,
   formatDate,
 } from "../utils/weatherUtils";
-import { HourlyCard } from "./HourlyCard";
+import { HourlyCard, ForecastHourlyCard } from "./HourlyCard";
+import type { ForecastProvider, ForecastSession, ForecastSummary, ProviderForecast } from "../types/forecast";
+import { averageSample, formatBand, unavailableLabel } from "../utils/forecastUtils";
 
 // ─── Inline helpers ───────────────────────────────────────────────────────────
 
 /** Small bar-chart sparkline of hourly cloud cover */
-function CloudSparkline({ hours }: { hours: HourlyData[] }) {
-  if (hours.length === 0) return null;
+function CloudSparkline({ hours = [], values }: { hours?: HourlyData[]; values?: (number | null)[] }) {
+  const covers = values ?? hours.map(hour => hour.totalcloudcover);
+  if (covers.length === 0) return null;
   const W = 100;
   const H = 16;
   return (
@@ -23,16 +26,16 @@ function CloudSparkline({ hours }: { hours: HourlyData[] }) {
       aria-hidden="true"
       style={{ verticalAlign: "middle" }}
     >
-      {hours.map((h, i) => {
-        const x = (i / hours.length) * W;
-        const w = Math.max(1.5, W / hours.length - 0.8);
-        const barH = Math.max(1, (h.totalcloudcover / 100) * H);
+      {covers.map((cover, i) => {
+        const x = (i / covers.length) * W;
+        const w = Math.max(1.5, W / covers.length - 0.8);
+        const barH = cover === null ? 1 : Math.max(1, (cover / 100) * H);
         const fill =
-          h.totalcloudcover <= 20
+          cover === null ? "#334155" : cover <= 20
             ? "#4ade80"
-            : h.totalcloudcover <= 50
+            : cover <= 50
             ? "#facc15"
-            : h.totalcloudcover <= 80
+            : cover <= 80
             ? "#fb923c"
             : "#f87171";
         return (
@@ -48,6 +51,90 @@ function CloudSparkline({ hours }: { hours: HourlyData[] }) {
         );
       })}
     </svg>
+  );
+}
+
+function ForecastStats({ summary, id }: { summary: ForecastSummary; id: string }) {
+  const average = id === "average";
+  const probability = id === "meteoblue";
+  const rate = id === "metservice";
+  const rain = probability ? summary.precipitationProbability : rate ? summary.precipitationRate : summary.precipitationAmount;
+  const score = summary.score.value;
+  return (
+    <div className="flex items-center justify-between">
+      <div className="text-center" title={`${summary.cloudCover.sampleCount}/${summary.cloudCover.expectedSampleCount} source hours`}><div className="text-sm text-slate-400">Cloud Cover</div><div className="text-lg font-medium text-white">{summary.cloudCover.value === null ? "—" : `${Math.round(summary.cloudCover.value)}%`}</div>{average && <div className="text-xs text-slate-500">{summary.cloudCover.sourceIds.length} forecasts</div>}{summary.cloudCover.coverage < 1 && <div className="text-xs text-slate-500">{summary.cloudCover.sampleCount}/{summary.cloudCover.expectedSampleCount} hours</div>}</div>
+      <div className="text-center" title={rain.unavailableReason ? unavailableLabel(rain.unavailableReason) : undefined}>
+        <div className="text-sm text-slate-400">{probability ? "Precipitation" : rate ? "Avg Rain Rate" : "Total Rain"}</div>
+        <div className="text-lg font-medium text-white">{rain.value === null ? "—" : `${(average || rate) && !probability ? Number(rain.value.toFixed(2)) : Math.round(rain.value)}${probability ? "%" : rate ? "mm/h" : "mm"}`}</div>
+        {!probability && summary.precipitationProbability.value !== null && <div className="text-xs text-slate-500">Mean chance: {Math.round(summary.precipitationProbability.value)}%{average ? ` · ${summary.precipitationProbability.sourceIds.length} sources` : ""}</div>}
+      </div>
+      <div className="text-center"><div className="text-sm text-slate-400">Avg Temp</div><div className="text-lg font-medium text-white">{summary.temperature.value === null ? "—" : `${Math.round(summary.temperature.value)}°C`}</div>{average && <div className="text-xs text-slate-500">{summary.temperature.sourceIds.length} contributing sources</div>}</div>
+      <div className="flex items-center space-x-2 bg-slate-700 rounded-lg px-3 py-2">
+        <Star className="h-5 w-5 text-amber-400" /><div className="text-right">
+          <div className={`text-lg font-bold ${score === null ? "text-slate-500" : getScoreColor(score)}`}>{score === null ? "—" : `${score}/100`}</div>
+          <div className={`text-xs ${score === null ? "text-slate-500" : getScoreColor(score)}`}>{score === null ? "Unavailable" : getScoreLabel(score)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CompleteDayRow({ session, providers }: { session: ForecastSession; providers: ForecastProvider[] }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [source, setSource] = useState("average");
+  const isSolar = session.kind === "day";
+  const mb = session.sources.meteoblue;
+  const choices = providers.filter(p => p.status !== "not_configured" && p.status !== "outside_coverage");
+  const selectedSource = choices.some(p => p.id === source) || source === "average" ? source : "average";
+  const current = session.sources[selectedSource];
+  const hours = selectedSource === "average" ? session.average.hourly.map(averageSample) : selectedSource === "timer" ? session.atmosphere.samples : current?.hourly ?? [];
+  const reference = selectedSource === "average" ? { before: session.average.referenceHours.before.map(averageSample), after: session.average.referenceHours.after.map(averageSample) } : selectedSource === "timer" ? { before: [], after: [] } : current?.referenceHours ?? { before: [], after: [] };
+  const selectedProvider = providers.find(p => p.id === selectedSource);
+  const selectedReason = selectedSource === "timer" ? session.atmosphere.unavailableReason : current?.unavailableReason;
+  const timer = session.atmosphere.samples;
+  const rows: (ProviderForecast | { id: string; name: string; summary: ForecastSummary; hourly: typeof session.average.hourly })[] = [{ id: "average", name: "Average · All available", ...session.average }, ...Object.values(session.sources)];
+  return (
+    <div className="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden" data-session-id={session.id}>
+      <div className="p-4 cursor-pointer hover:bg-slate-750 transition-colors" onClick={() => setIsExpanded(!isExpanded)}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <h3 className="text-xl font-semibold text-white">{session.dayName} {formatDate(session.date)}</h3>
+            <span className="text-sm text-slate-400">({session.durationHours} {isSolar ? "solar" : "night"} hours{!isSolar && mb?.summary.moonlight.value !== null && mb?.summary.moonlight.value !== undefined ? `, Moon ${Math.round(mb.summary.moonlight.value)}%` : ""}{!isSolar && mb?.summary.skyBrightness.value !== null && mb?.summary.skyBrightness.value !== undefined ? `, Sky Brightness ${mb.summary.skyBrightness.value.toFixed(3)} lux` : ""}{mb?.summary.windSpeed.value !== null && mb?.summary.windSpeed.value !== undefined ? `, Wind ${Math.round(mb.summary.windSpeed.value)} km/h` : ""})</span>
+          </div>
+          {isExpanded ? <ChevronUp className="h-5 w-5 text-slate-400" /> : <ChevronDown className="h-5 w-5 text-slate-400" />}
+        </div>
+        {rows.map(row => {
+          const average = row.id === "average";
+          const failed = !average && "unavailableReason" in row ? row.unavailableReason : null;
+          const error = providers.find(p => p.id === row.id)?.error;
+          return <section className="mb-3" key={row.id} data-provider-id={row.id}>
+            <div className="text-sm text-slate-400 mb-2 flex items-center gap-1">{average ? <Layers className="h-4 w-4" /> : row.id === "meteoblue" ? "🌤️ " : row.id === "metoffice" ? "🏢 " : <Cloud className="h-4 w-4" />}{row.name}</div>
+            {failed ? <div className="text-sm text-slate-400">{error?.message ?? unavailableLabel(failed)}</div> : <>
+              <ForecastStats summary={row.summary} id={row.id} />
+              <div className="flex items-center gap-3 mt-2"><CloudSparkline values={row.hourly.map(h => typeof h.cloudCover === "object" && h.cloudCover !== null ? h.cloudCover.value : h.cloudCover)} />
+                {average && <span className="text-xs text-slate-500">{session.durationHours} hours · Average of available forecasts</span>}
+                {!isSolar && row.id === "meteoblue" && row.summary.moonlight.value !== null && <div className={`flex items-center gap-1 ${moonColor(row.summary.moonlight.value)}`} title={`Avg moonlight ≈ ${moonPct(row.summary.moonlight.value)}%`}><Moon className="h-3 w-3" /><span className="text-xs font-medium">{moonPct(row.summary.moonlight.value)}%</span></div>}
+              </div>
+            </>}
+          </section>;
+        })}
+        {providers.some(p => p.id === "timer") && <section data-provider-id="timer">
+          <div className="text-sm text-slate-400 mb-2 flex items-center gap-1"><Eye className="h-4 w-4" />7Timer · Atmosphere <span className="text-xs text-slate-500">Native 3-hour samples</span></div>
+          {timer.length ? <><div className="flex items-center justify-between">
+            {[["Cloud Bands", formatBand(session.atmosphere.summary.cloudBand)], ["Seeing", formatBand(session.atmosphere.summary.seeing)], ["Transparency", formatBand(session.atmosphere.summary.transparency)], ["Avg Temp", session.atmosphere.summary.temperature.value === null ? "—" : `${Math.round(session.atmosphere.summary.temperature.value)}°C`]].map(([label, value]) => <div className="text-center" key={label}><div className="text-sm text-slate-400">{label}</div><div className="text-lg font-medium text-white">{value}</div></div>)}
+          </div><p className="text-xs text-slate-500 mt-2">{timer.length} native samples. Ranges are not converted to exact cloud percentages or a score.</p></> : <p className="text-sm text-slate-400">{providers.find(p => p.id === "timer")?.error?.message ?? unavailableLabel(session.atmosphere.unavailableReason)}</p>}
+        </section>}
+      </div>
+      {isExpanded && <div className="border-t border-slate-700 bg-slate-850">
+        <div className="p-4">
+          <div className="flex items-center justify-between gap-3 mb-4"><h4 className="text-lg font-medium text-white">{isSolar ? "Daytime" : "Nighttime"} Hours</h4><label className="text-sm text-slate-400">Source <select aria-label={`${session.id} hourly source`} className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-slate-300 text-sm max-w-full" value={selectedSource} onChange={event => setSource(event.target.value)}><option value="average">Average · All available</option>{choices.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label></div>
+          {reference.before.length > 0 && <div className="mb-4"><h5 className="text-xs font-normal text-slate-400 mb-2">Reference Hours Before Night ({reference.before.length} hours)</h5><div className="flex space-x-1 overflow-x-auto pb-2">{reference.before.map(h => <ForecastHourlyCard key={h.time} sample={h} sourceId={selectedSource} isReference isSolar={isSolar} />)}</div></div>}
+          {hours.length ? <div className="flex space-x-3 overflow-x-auto pb-2">{hours.map(h => <ForecastHourlyCard key={h.time} sample={h} sourceId={selectedSource} isSolar={isSolar} />)}</div> : <p className="text-sm text-slate-400">{selectedProvider?.error?.message ?? unavailableLabel(selectedReason ?? null)}</p>}
+          {reference.after.length > 0 && <div className="mt-4"><h5 className="text-xs font-normal text-slate-400 mb-2">Reference Hours After Night ({reference.after.length} hours)</h5><div className="flex space-x-1 overflow-x-auto pb-2">{reference.after.map(h => <ForecastHourlyCard key={h.time} sample={h} sourceId={selectedSource} isReference isSolar={isSolar} />)}</div></div>}
+        </div>
+        <div className="flex items-center justify-center py-3 cursor-pointer hover:bg-slate-700 transition-colors border-t border-slate-700 text-slate-400 hover:text-white gap-1 text-sm" onClick={() => setIsExpanded(false)}><ChevronUp className="h-4 w-4" /><span>Collapse</span></div>
+      </div>}
+    </div>
   );
 }
 

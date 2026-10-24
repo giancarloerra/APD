@@ -1,224 +1,58 @@
 // APD — Astrophotography Planning Dashboard
 // Copyright © 2026 Giancarlo Erra — AGPL-3.0-or-later
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Star, Cloud, CloudSnow, Telescope, Globe, Settings, Home, HelpCircle, AlertTriangle } from "lucide-react";
 import { weatherService } from "../services/weatherService";
-import { processWeatherData, processSolarData, getScoreColor, getScoreLabel } from "../utils/weatherUtils";
-import {
-  processMetOfficeData,
-  processMetOfficeSolarData,
-} from "../utils/metOfficeUtils";
-import {
-  WeatherData,
-  DayData,
-  DownloadStatus as IDownloadStatus,
-} from "../types/weather";
+import { getScoreColor, getScoreLabel } from "../utils/weatherUtils";
+import { DownloadStatus as IDownloadStatus } from "../types/weather";
+import type { CompleteForecast, ForecastSession } from "../types/forecast";
 import { DownloadStatus } from "./DownloadStatus";
-import { UnifiedDayRow } from "./UnifiedDayRow";
+import { CompleteDayRow } from "./UnifiedDayRow";
 import { WeeklyHeatmap } from "./WeeklyHeatmap";
 
 export function Dashboard() {
-  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
-  const [dayData, setDayData] = useState<DayData[]>([]);
-  const [metOfficeDayData, setMetOfficeDayData] = useState<DayData[]>([]);
-  const [solarData, setSolarData] = useState<DayData[]>([]);
-  const [metOfficeSolarData, setMetOfficeSolarData] = useState<DayData[]>([]);
-  const [downloadStatus, setDownloadStatus] = useState<IDownloadStatus>({
-    isDownloading: false,
-  });
+  const [forecast, setForecast] = useState<CompleteForecast | null>(null);
+  const [downloadStatus, setDownloadStatus] = useState<IDownloadStatus>({ isDownloading: false });
   const [isLoading, setIsLoading] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const [configuredLocation, setConfiguredLocation] = useState<{ lat: number; lon: number } | null>(null);
 
   useEffect(() => {
-    // Subscribe to download status updates
     const unsubscribe = weatherService.subscribeToStatus(setDownloadStatus);
-
-    // Load initial data (with automatic download check)
     loadWeatherData();
-
-    // Fetch configured location to detect mismatches
     fetch('/api/location').then(r => r.json()).then(loc => {
       if (loc && typeof loc.lat === 'number') setConfiguredLocation(loc);
     }).catch(() => {});
-
     return unsubscribe;
   }, []);
 
   const loadWeatherData = async (forceDownload = false) => {
     try {
       setIsLoading(true);
-
-      // Load Meteoblue data
-      const data = await weatherService.getWeatherData(forceDownload);
-
-      // Load Met Office data
-      const metOfficeDataResult = await weatherService.getMetOfficeData();
-
-      if (data) {
-        setWeatherData(data);
-        const processedDays = processWeatherData(data);
-        setDayData(processedDays);
-
-        // Process solar data
-        const processedSolarDays = processSolarData(data);
-        setSolarData(processedSolarDays);
-      } else {
-        // Meteoblue unavailable — clear any stale Meteoblue data
-        setWeatherData(null);
-        setDayData([]);
-        setSolarData([]);
-      }
-
-      // Met Office is independent — process it with or without Meteoblue
-      if (metOfficeDataResult) {
-        const metOfficeProcessedDays = processMetOfficeData(
-          metOfficeDataResult
-        );
-        setMetOfficeDayData(metOfficeProcessedDays);
-
-        // Process Met Office solar data
-        const processedMetOfficeSolarDays = processMetOfficeSolarData(
-          metOfficeDataResult,
-          data ?? undefined
-        );
-        setMetOfficeSolarData(processedMetOfficeSolarDays);
-      } else {
-        // Met Office unavailable — clear any stale Met Office data
-        setMetOfficeDayData([]);
-        setMetOfficeSolarData([]);
-      }
+      setForecast(await weatherService.getCompleteForecast(forceDownload));
     } catch (error) {
-      console.error("Error loading weather data:", error);
+      setForecast(null);
+      setDownloadStatus(previous => ({ ...previous, isDownloading: false, error: error instanceof Error ? error.message : "Failed to load forecasts" }));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleRefresh = () => {
-    loadWeatherData(true);
+  const handleRefresh = () => { loadWeatherData(true); };
+  const mergedDayData = forecast?.nightSessions ?? [];
+  const mergedSolarData = forecast?.daySessions ?? [];
+  const getBestDay = (sessions: ForecastSession[], id: string | null) => {
+    const session = sessions.find(s => s.id === id);
+    const value = session?.average.summary.score.value;
+    return session && value != null ? { dayName: session.dayName, score: value, source: "All available forecasts" } : null;
   };
-
-  const isYesterday = (dateString: string) => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-
-    const yesterdayString = yesterday.toISOString().split("T")[0]; // "YYYY-MM-DD"
-    return dateString === yesterdayString;
-  };
-
-  const getOverallScore = () => {
-    if (dayData.length === 0) return 0;
-    const avgScore =
-      dayData.reduce((sum, day) => sum + day.astrophotographyScore, 0) /
-      dayData.length;
-    return Math.round(avgScore);
-  };
-
-  // Merge day data from both providers for unified display
-  const mergedDayData = useMemo(() => {
-    const mergedDays = new Map<
-      string,
-      { meteoblue?: DayData; metoffice?: DayData }
-    >();
-
-    // Add Meteoblue days
-    dayData
-      .filter((day) => !isYesterday(day.date))
-      .forEach((day) => {
-        if (!mergedDays.has(day.date)) {
-          mergedDays.set(day.date, {});
-        }
-        mergedDays.get(day.date)!.meteoblue = day;
-      });
-
-    // Add Met Office days
-    metOfficeDayData
-      .filter((day) => !isYesterday(day.date))
-      .forEach((day) => {
-        if (!mergedDays.has(day.date)) {
-          mergedDays.set(day.date, {});
-        }
-        mergedDays.get(day.date)!.metoffice = day;
-      });
-
-    // Convert to array and sort by date
-    return Array.from(mergedDays.entries())
-      .map(([date, data]) => ({ date, ...data }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [dayData, metOfficeDayData]);
-
-  // Return the merged day with the highest astrophotography score
-  const getBestDay = (
-    mergedDays: Array<{ date: string; meteoblue?: DayData; metoffice?: DayData }>
-  ) => {
-    let best: { dayName: string; score: number; source: string } | null = null;
-    for (const d of mergedDays) {
-      const mb = d.meteoblue;
-      const mo = d.metoffice;
-      let score: number;
-      let source: string;
-      if (mb && mo) {
-        score = Math.round((mb.astrophotographyScore + mo.astrophotographyScore) / 2);
-        source = "Meteoblue + Met Office";
-      } else if (mb) {
-        score = mb.astrophotographyScore;
-        source = "Meteoblue";
-      } else if (mo) {
-        score = mo.astrophotographyScore;
-        source = "Met Office";
-      } else {
-        continue;
-      }
-      const dayName = (mb || mo)?.dayName ?? "";
-      if (!best || score > best.score) {
-        best = { dayName, score, source };
-      }
-    }
-    return best;
-  };
-
-  // Merge solar day data from both providers for unified display
-  const mergedSolarData = useMemo(() => {
-    const mergedDays = new Map<
-      string,
-      { meteoblue?: DayData; metoffice?: DayData }
-    >();
-
-    // Add Meteoblue solar days
-    solarData
-      .filter((day) => !isYesterday(day.date))
-      .forEach((day) => {
-        if (!mergedDays.has(day.date)) {
-          mergedDays.set(day.date, {});
-        }
-        mergedDays.get(day.date)!.meteoblue = day;
-      });
-
-    // Add Met Office solar days
-    metOfficeSolarData
-      .filter((day) => !isYesterday(day.date))
-      .forEach((day) => {
-        if (!mergedDays.has(day.date)) {
-          mergedDays.set(day.date, {});
-        }
-        mergedDays.get(day.date)!.metoffice = day;
-      });
-
-    // Convert to array and sort by date
-    return Array.from(mergedDays.entries())
-      .map(([date, data]) => ({ date, ...data }))
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [solarData, metOfficeSolarData]);
-
-  const locationMismatch = weatherData && configuredLocation
-    ? Math.abs(weatherData.metadata.latitude - configuredLocation.lat) > 0.01 ||
-      Math.abs(weatherData.metadata.longitude - configuredLocation.lon) > 0.01
+  const locationMismatch = forecast && configuredLocation
+    ? Math.abs(forecast.location.latitude - configuredLocation.lat) > 0.01 ||
+      Math.abs(forecast.location.longitude - configuredLocation.lon) > 0.01
     : false;
 
-  if (isLoading && !weatherData && metOfficeDayData.length === 0) {
+  if (isLoading && !forecast) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
         <div className="text-center">
@@ -309,9 +143,9 @@ export function Dashboard() {
               <div className="sm:col-span-2 lg:col-span-1">
                 <h4 className="font-semibold text-white mb-2 uppercase tracking-wider text-[0.68rem]">Data Sources</h4>
                 <div className="space-y-2 text-slate-400">
-                  <p><span className="text-accent font-medium">Meteoblue</span> — Primary source. Night/day detection, moonlight, wind, humidity. Score is based on this.</p>
-                  <p><span className="text-blue-400 font-medium">Met Office</span> — UK model via Open-Meteo. Good cross-validation reference.</p>
-                  <p><span className="text-slate-300 font-medium">LLM endpoint</span> — <code className="text-xs bg-slate-700 px-1 rounded">/api/weather/summary</code> — public JSON for AI automations (daily email alerts, chatbots…)</p>
+                  <p><span className="text-accent font-medium">Average</span> — Available forecasts averaged per hour and metric. Sources can overlap and are not independent votes.</p>
+                  <p><span className="text-blue-400 font-medium">Providers</span> — Compare each source individually. Native ranges, geographic limits and missing data remain explicit.</p>
+                  <p><span className="text-slate-300 font-medium">LLM endpoint</span>: <code className="text-xs bg-slate-700 px-1 rounded">/api/weather/summary</code>. Compact public nightly JSON for scripts and AI tools, with all available providers.</p>
                 </div>
                 <a href="/about" className="inline-flex items-center gap-1 mt-3 text-accent hover:text-accent/80 transition-colors text-xs font-medium">
                   Full feature guide →
@@ -327,10 +161,9 @@ export function Dashboard() {
         {/* Download Status */}
         <DownloadStatus status={downloadStatus} onRefresh={handleRefresh} />
 
-        {(weatherData || metOfficeDayData.length > 0) && (
+        {forecast && (
           <>
-            {/* Overall Summary — Meteoblue-only (has richer metadata) */}
-            {weatherData && (
+            {/* Overall summary uses the same aggregate as the complete API. */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-6">
                 <div className="flex items-center space-x-3 mb-2">
@@ -340,7 +173,7 @@ export function Dashboard() {
                   </h3>
                 </div>
                 <div className="text-3xl font-bold text-accent">
-                  {getOverallScore()}/100
+                  {forecast.summary.overallNightScore ?? "—"}/100
                 </div>
                 <p className="text-sm text-slate-400 mt-1">
                   Average conditions for the week
@@ -353,11 +186,11 @@ export function Dashboard() {
                   <h3 className="text-lg font-semibold text-white">Location</h3>
                 </div>
                 <div className="text-lg font-medium text-white">
-                  {Math.abs(weatherData.metadata.latitude).toFixed(2)}°{weatherData.metadata.latitude >= 0 ? 'N' : 'S'},{" "}
-                  {Math.abs(weatherData.metadata.longitude).toFixed(2)}°{weatherData.metadata.longitude >= 0 ? 'E' : 'W'}
+                  {Math.abs(forecast.location.latitude).toFixed(2)}°{forecast.location.latitude >= 0 ? 'N' : 'S'},{" "}
+                  {Math.abs(forecast.location.longitude).toFixed(2)}°{forecast.location.longitude >= 0 ? 'E' : 'W'}
                 </div>
                 <p className="text-sm text-slate-400 mt-1">
-                  Elevation: {weatherData.metadata.height}m
+                  Elevation: {forecast.location.elevation}m
                 </p>
                 {locationMismatch && (
                   <div className="flex items-center gap-1.5 mt-2 text-xs text-amber-400">
@@ -375,15 +208,14 @@ export function Dashboard() {
                   </h3>
                 </div>
                 <div className="text-lg font-medium text-white">
-                  {dayData.reduce((sum, day) => sum + day.nightHours.length, 0)}{" "}
+                  {mergedDayData.reduce((sum, day) => sum + day.durationHours, 0)}{" "}
                   total
                 </div>
                 <p className="text-sm text-slate-400 mt-1">
-                  Across {dayData.length} days
+                  Across {mergedDayData.length} days
                 </p>
               </div>
             </div>
-            )}
 
             {/* Unified Daily Forecasts */}
             <div className="space-y-4">
@@ -391,7 +223,7 @@ export function Dashboard() {
                 Daily Night Forecasts
               </h2>
 
-              {dayData.length === 0 && metOfficeDayData.length === 0 ? (
+              {mergedDayData.length === 0 ? (
                 <div className="text-center py-12">
                   <CloudSnow className="h-12 w-12 text-slate-400 mx-auto mb-4" />
                   <p className="text-slate-400">No nighttime data available</p>
@@ -400,7 +232,7 @@ export function Dashboard() {
                 <>
                   {/* Best night banner */}
                   {(() => {
-                    const best = getBestDay(mergedDayData);
+                    const best = getBestDay(mergedDayData, forecast.summary.bestNight);
                     if (!best || best.score < 30) return null;
                     return (
                       <div
@@ -439,14 +271,14 @@ export function Dashboard() {
 
                   {/* Weekly cloud cover heatmap */}
                   <div className="mb-6">
-                    <WeeklyHeatmap mergedDays={mergedDayData} isSolar={false} />
+                    <WeeklyHeatmap sessions={mergedDayData} providers={forecast.providers} isSolar={false} />
                   </div>
 
                   {mergedDayData.map((mergedDay) => (
-                    <UnifiedDayRow
+                    <CompleteDayRow
                       key={mergedDay.date}
-                      meteoblueDay={mergedDay.meteoblue}
-                      metOfficeDay={mergedDay.metoffice}
+                      session={mergedDay}
+                      providers={forecast.providers}
                     />
                   ))}
                 </>
@@ -553,7 +385,7 @@ export function Dashboard() {
                   Daily Solar Forecasts
                 </h2>
 
-                {solarData.length === 0 && metOfficeSolarData.length === 0 ? (
+                {mergedSolarData.length === 0 ? (
                   <div className="text-center py-12">
                     <CloudSnow className="h-12 w-12 text-slate-400 mx-auto mb-4" />
                     <p className="text-slate-400">No solar data available</p>
@@ -562,7 +394,7 @@ export function Dashboard() {
                   <>
                     {/* Best solar day banner */}
                     {(() => {
-                      const best = getBestDay(mergedSolarData);
+                      const best = getBestDay(mergedSolarData, forecast.summary.bestDay);
                       if (!best || best.score < 30) return null;
                       return (
                         <div
@@ -601,15 +433,14 @@ export function Dashboard() {
 
                     {/* Weekly solar cloud cover heatmap */}
                     <div className="mb-6">
-                      <WeeklyHeatmap mergedDays={mergedSolarData} isSolar={true} />
+                      <WeeklyHeatmap sessions={mergedSolarData} providers={forecast.providers} isSolar={true} />
                     </div>
 
                     {mergedSolarData.map((mergedDay) => (
-                      <UnifiedDayRow
+                      <CompleteDayRow
                         key={`solar-${mergedDay.date}`}
-                        meteoblueDay={mergedDay.meteoblue}
-                        metOfficeDay={mergedDay.metoffice}
-                        isSolar={true}
+                        session={mergedDay}
+                        providers={forecast.providers}
                       />
                     ))}
                   </>
@@ -619,7 +450,7 @@ export function Dashboard() {
           </>
         )}
 
-        {!weatherData && metOfficeDayData.length === 0 && !isLoading && (
+        {!forecast && !isLoading && (
           <div className="text-center py-12">
             <CloudSnow className="h-12 w-12 text-slate-400 mx-auto mb-4" />
             <p className="text-slate-400 mb-4">No weather data available</p>

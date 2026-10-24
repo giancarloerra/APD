@@ -12,7 +12,7 @@ import { Redis } from "@upstash/redis";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { weatherService, bindHelpers } from "./services/weatherService.js";
-import { createWeatherSummary } from "./utils/weatherProcessor.js";
+import { ProviderError } from "./services/forecastProviders.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -151,6 +151,23 @@ function isAuthenticated(req) {
   return token ? verifySessionToken(token) : false;
 }
 
+function requireTrustedOrigin(req, res, next) {
+  if (!MASTER_PASSWORD || ["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  const origin = req.get("origin");
+  // Server-side clients do not send Origin. Browser form and fetch writes do.
+  if (!origin) return next();
+  let source, own;
+  try {
+    source = new URL(origin);
+    own = new URL(`${req.protocol}://${req.get("host")}`);
+  } catch { return res.status(403).json({ error: "Invalid request origin" }); }
+  const allowed = corsOrigin ? corsOrigin.split(",").map(value => value.trim()) : [];
+  const loopback = ["localhost", "127.0.0.1", "[::1]"];
+  const localDevelopment = process.env.NODE_ENV !== "production" && source.protocol === own.protocol && loopback.includes(source.hostname) && loopback.includes(own.hostname);
+  if (source.origin !== own.origin && !allowed.includes(source.origin) && !localDevelopment) return res.status(403).json({ error: "Untrusted request origin" });
+  return next();
+}
+
 // Auth middleware — protects routes that need it
 function requireAuth(req, res, next) {
   if (isAuthenticated(req)) return next();
@@ -163,7 +180,7 @@ function requireAuth(req, res, next) {
 }
 
 // ===== AUTH ROUTES (always public) =====
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", requireTrustedOrigin, (req, res) => {
   const { password } = req.body;
   if (!MASTER_PASSWORD) {
     return res.json({ ok: true });
@@ -185,7 +202,7 @@ app.post("/api/auth/login", (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/auth/logout", (req, res) => {
+app.post("/api/auth/logout", requireTrustedOrigin, (req, res) => {
   res.clearCookie("session");
   res.json({ ok: true });
 });
@@ -270,12 +287,10 @@ app.get("/api/health", async (req, res) => {
 // ===== PUBLIC API: weather summary (for AI) =====
 app.get("/api/weather/summary", async (req, res) => {
   try {
-    const meteoblueData = await weatherService.getWeatherData();
-    const metOfficeData = await weatherService.getMetOfficeData();
-    if (!meteoblueData && !metOfficeData) {
+    const summary = await weatherService.getWeatherSummary();
+    if (!summary) {
       return res.status(404).json({ error: "No weather data available" });
     }
-    const summary = createWeatherSummary(meteoblueData, metOfficeData);
     res.json(summary);
   } catch (error) {
     console.error("Error creating weather summary:", error);
@@ -340,7 +355,7 @@ app.get("/api/weather/refresh/trigger", ...triggerHandler);
 app.post("/api/weather/refresh/trigger", ...triggerHandler);
 
 // ===== PROTECTED ROUTES — everything below requires auth =====
-app.use("/api/*", requireAuth);
+app.use("/api/*", requireTrustedOrigin, requireAuth);
 
 // Protect skychart.html page access
 app.get("/skychart.html", requireAuth, (req, res, next) => {
@@ -353,6 +368,16 @@ app.get("/settings", requireAuth, (req, res) => {
 });
 
 // ===== WEATHER API ROUTES (protected by middleware above) =====
+app.get("/api/weather/forecast", async (req, res) => {
+  try {
+    res.json(await weatherService.getCompleteForecast());
+  } catch (error) {
+    console.error("Error creating dashboard forecast:", error);
+    const known = error instanceof ProviderError;
+    res.status(503).json({ error: known ? error.message : "Forecast unavailable; check server logs", code: known ? error.code : "forecast_unavailable", providers: known ? error.providers : undefined });
+  }
+});
+
 app.get("/api/weather", async (req, res) => {
   try {
     const data = await weatherService.getWeatherData();
@@ -440,6 +465,36 @@ app.put("/api/weather/meteoblue/key", async (req, res) => {
   }
 });
 
+// ===== OPTIONAL METSERVICE API KEY MANAGEMENT =====
+const REDIS_KEY_METSERVICE_KEY = "weather:metservice_api_key";
+
+async function getMetServiceKey() {
+  if (process.env.METSERVICE_API_KEY) return process.env.METSERVICE_API_KEY;
+  return await redis.get(REDIS_KEY_METSERVICE_KEY);
+}
+
+app.get("/api/weather/metservice/key-status", async (req, res) => {
+  try {
+    const key = await getMetServiceKey();
+    res.json({ configured: !!key, source: process.env.METSERVICE_API_KEY ? "env" : key ? "redis" : "none" });
+  } catch (error) {
+    console.error("MetService key status error:", error);
+    res.status(503).json({ error: "Failed to read MetService key status; check server logs" });
+  }
+});
+
+app.put("/api/weather/metservice/key", async (req, res) => {
+  const key = typeof req.body?.key === "string" ? req.body.key.trim() : "";
+  if (key.length < 5 || key.length > 256 || !/^[\x20-\x7E]+$/.test(key)) return res.status(400).json({ error: "Invalid API key format" });
+  try {
+    await redis.set(REDIS_KEY_METSERVICE_KEY, key);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("MetService key save error:", error);
+    res.status(503).json({ error: "Failed to save MetService key; check server logs" });
+  }
+});
+
 // ===== SHARED OBSERVER LOCATION =====
 const REDIS_KEY_LOCATION = "app:observer_location";
 const DEFAULT_LAT = parseFloat(process.env.OBSERVER_LAT || "52.6278");
@@ -492,7 +547,7 @@ app.put("/api/location", async (req, res) => {
 export { getMeteoblueKey, getObserverLocation, redis };
 
 // Wire helpers into weatherService (avoids circular import)
-bindHelpers(getMeteoblueKey, getObserverLocation, redis);
+bindHelpers(getMeteoblueKey, getObserverLocation, redis, getMetServiceKey);
 
 // ===== TELESCOPIUS API PROXY =====
 const TELESCOPIUS_BASE = "https://api.telescopius.com/v2.0";
@@ -510,12 +565,13 @@ async function getTelescopiusKey() {
 // ===== AGGREGATE SETTINGS API =====
 app.get("/api/settings", async (req, res) => {
   try {
-    const [loc, meteoblueKey, telescopiusKey, downloadStatus, cronTokenData] = await Promise.all([
+    const [loc, meteoblueKey, telescopiusKey, downloadStatus, cronTokenData, metserviceKey] = await Promise.all([
       getObserverLocation(),
       getMeteoblueKey(),
       getTelescopiusKey(),
       weatherService.getDownloadStatus(),
       getCronTokenData(),
+      getMetServiceKey(),
     ]);
     const cronSource = process.env.CRON_TRIGGER_TOKEN ? "env" : (cronTokenData ? "redis" : "none");
     res.json({
@@ -523,6 +579,7 @@ app.get("/api/settings", async (req, res) => {
       apiKeys: {
         meteoblue: { configured: !!meteoblueKey, source: process.env.METEOBLUE_API_KEY ? "env" : (meteoblueKey ? "redis" : "none") },
         telescopius: { configured: !!telescopiusKey, source: process.env.TELESCOPIUS_API_KEY ? "env" : (telescopiusKey ? "redis" : "none") },
+        metservice: { configured: !!metserviceKey, source: process.env.METSERVICE_API_KEY ? "env" : metserviceKey ? "redis" : "none" },
       },
       auth: { enabled: !!MASTER_PASSWORD },
       download: downloadStatus,
@@ -651,6 +708,7 @@ async function telescopiusCached(cacheKey, ttlSec, endpoint, params, forceRefres
 app.get("/api/skychart/telescopius/highlights", telescopiusLimiter, async (req, res) => {
   try {
     const { lat, lon, timezone, datetime, types, min_alt, min_alt_minutes, moon_dist_min, moon_dist_max, results_per_page, page, refresh } = req.query;
+    if (datetime != null && typeof datetime !== "string") return res.status(400).json({ error: "datetime must be a string" });
     const forceRefresh = refresh === 'true';
     const dateKey = (datetime || "now").replace(/[^a-zA-Z0-9]/g, "");
     const pg = page || 1;
@@ -679,6 +737,7 @@ app.get("/api/skychart/telescopius/search", telescopiusLimiter, async (req, res)
 app.get("/api/skychart/telescopius/solar-system", telescopiusLimiter, async (req, res) => {
   try {
     const { lat, lon, timezone, datetime } = req.query;
+    if (datetime != null && typeof datetime !== "string") return res.status(400).json({ error: "datetime must be a string" });
     const dateKey = (datetime || "now").replace(/[^a-zA-Z0-9]/g, "");
     const cacheKey = `telescopius:solar:${lat}:${lon}:${dateKey}`;
     const data = await telescopiusCached(cacheKey, 43200, "/solar-system/times", {
