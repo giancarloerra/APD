@@ -145,7 +145,7 @@ export function Dashboard() {
                 <div className="space-y-2 text-slate-400">
                   <p><span className="text-accent font-medium">Average</span> — Available forecasts averaged per hour and metric. Sources can overlap and are not independent votes.</p>
                   <p><span className="text-blue-400 font-medium">Providers</span> — Compare each source individually. Native ranges, geographic limits and missing data remain explicit.</p>
-                  <p><span className="text-slate-300 font-medium">LLM endpoint</span> — <code className="text-xs bg-slate-700 px-1 rounded">/api/weather/summary?v=2</code> — complete public JSON for scripts and AI tools. The original endpoint remains compatible.</p>
+                  <p><span className="text-slate-300 font-medium">LLM endpoint</span>: <code className="text-xs bg-slate-700 px-1 rounded">/api/weather/summary</code>. Compact public nightly JSON for scripts and AI tools, with all available providers.</p>
                 </div>
                 <a href="/about" className="inline-flex items-center gap-1 mt-3 text-accent hover:text-accent/80 transition-colors text-xs font-medium">
                   Full feature guide →

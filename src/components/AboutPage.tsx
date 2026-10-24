@@ -17,7 +17,7 @@ const WEATHER_FEATURES = [
   "Live SDO/HMI solar imagery + sunspot region images",
   "Auto twice-daily weather refresh + manual trigger from header",
   "Download status indicator with last-download timestamp",
-  "Complete forecast endpoint — GET /api/weather/summary?v=2 (always public, no auth) — night/day/hourly data, all sources, native astronomy fields, averages, scores, coverage and errors; the original summary remains compatible",
+  "Compact nightly forecast endpoint: GET /api/weather/summary (always public, no auth). Original Meteoblue and Met Office lists plus seven added provider lists",
 ];
 
 const SKY_FEATURES = [
