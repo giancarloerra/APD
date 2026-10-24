@@ -119,12 +119,13 @@ describe("provider adapters", () => {
 
   it("honours Norway's Expires and Last-Modified/304 caching contract without hiding errors", async () => {
     const p = PROVIDERS.find(p => p.id === "metnorway");
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 304, headers: { Expires: "Fri, 01 Jan 2027 00:00:00 GMT" } }));
+    const expires = new Date(Date.now() + 3600000).toUTCString();
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 304, headers: { Expires: expires } }));
     const loc = { lat: 51.5, lon: -.1, alt: 25 };
-    const cached = { status: "ok", samples: [{ time: "2026-01-01T22:00:00.000Z" }], cache: { expires: "Fri, 01 Jan 2027 00:00:00 GMT", lastModified: "Thu, 01 Jan 2026 00:00:00 GMT" } };
+    const cached = { status: "ok", samples: [{ time: "2026-01-01T22:00:00.000Z" }], cache: { expires, lastModified: "Thu, 01 Jan 2026 00:00:00 GMT" } };
     expect(await fetchAdditionalProvider(p, loc, cached, fetchImpl)).toBe(cached);
     expect(fetchImpl).not.toHaveBeenCalled();
-    const result = await fetchAdditionalProvider(p, loc, { ...cached, cache: { ...cached.cache, expires: "Thu, 01 Jan 2026 00:00:00 GMT" } }, fetchImpl);
+    const result = await fetchAdditionalProvider(p, loc, { ...cached, cache: { ...cached.cache, expires: new Date(Date.now() - 3600000).toUTCString() } }, fetchImpl);
     expect(result.samples).toEqual(cached.samples);
     expect(result.cache.lastModified).toBe(cached.cache.lastModified);
     expect(fetchImpl.mock.calls[0][1].headers["If-Modified-Since"]).toBe(cached.cache.lastModified);

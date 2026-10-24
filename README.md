@@ -791,9 +791,11 @@ apd/
 ├── server/                         # Backend
 │   ├── index.js                    # Express server, auth, routes, Redis
 │   ├── services/
-│   │   └── weatherService.js       # Weather fetching & caching
+│   │   ├── forecastProviders.js    # Provider HTTP requests and normalization
+│   │   └── weatherService.js       # Independent provider refresh and Redis caching
 │   └── utils/
-│       ├── weatherProcessor.js     # /api/weather/summary processing
+│       ├── forecastProcessor.js    # Complete v2 forecast sessions and aggregation
+│       ├── weatherProcessor.js     # Legacy /api/weather/summary processing
 │       └── weatherProcessor.test.js
 ├── src/                            # Frontend (React + TypeScript)
 │   ├── main.tsx                    # React entry point
@@ -804,15 +806,17 @@ apd/
 │   │   ├── Dashboard.tsx           # Main weather dashboard
 │   │   ├── LandingPage.tsx         # Home / entry page with animated star field
 │   │   ├── AboutPage.tsx           # Feature guide and usage reference
-│   │   ├── UnifiedDayRow.tsx       # Day row with Meteoblue + Met Office side-by-side
+│   │   ├── UnifiedDayRow.tsx       # Average/provider night and daytime rows; legacy export
 │   │   ├── HourlyCard.tsx          # Hourly forecast card
 │   │   ├── WeeklyHeatmap.tsx       # Weekly cloud cover heatmap grid
 │   │   └── DownloadStatus.tsx      # Download status indicator
 │   ├── services/
 │   │   └── weatherService.ts       # API client
 │   ├── types/
-│   │   └── weather.ts              # TypeScript interfaces
+│   │   ├── forecast.ts             # Complete v2 forecast interfaces
+│   │   └── weather.ts              # Legacy weather interfaces
 │   └── utils/
+│       ├── forecastUtils.ts        # V2 sample and native-band display helpers
 │       ├── weatherUtils.ts         # Meteoblue data processing & scoring
 │       ├── weatherUtils.test.ts    # Frontend unit tests
 │       └── metOfficeUtils.ts       # Met Office data processing & scoring
