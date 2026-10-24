@@ -13,6 +13,29 @@ function provider(id, samples, overrides = {}) {
 const hours = ["2026-01-01T22:00:00.000Z", "2026-01-01T23:00:00.000Z", "2026-01-02T00:00:00.000Z"];
 
 describe("complete forecast aggregation", () => {
+  it("rejects overlapping hourly clock phases rather than counting the same hour twice", () => {
+    const utc = [8, 9, 10].map(hour => `2026-01-01T${String(hour).padStart(2, "0")}:00:00.000Z`);
+    const records = [provider("metoffice", utc.map(time => sample(time, { isDay: 1, cloudCover: 20 }))), provider("gfs", utc.map(time => sample(new Date(Date.parse(time) + 900000).toISOString(), { isDay: 1, cloudCover: 60 })), { timeZone: "Asia/Kathmandu" })];
+    expect(() => createCompleteForecast(records, { lat: 27.7172, lon: 85.324, alt: 0 }, now)).toThrow("hourly clocks");
+  });
+
+  it("aligns added providers' session and reference rain with the declared forward intervals", () => {
+    const times = [18, 19, 20, 21].map(hour => `2026-06-21T${hour}:00:00.000Z`);
+    const samples = times.map((time, i) => sample(time, { isDay: i < 3 ? 1 : 0, cloudCover: 20, precipitationAmount: [1, 2, 4, 8][i], precipitationInterval: { start: new Date(Date.parse(time) - 3600000).toISOString(), end: time, amount: [1, 2, 4, 8][i] } }));
+    const record = provider("gfs", samples);
+    const f = createCompleteForecast([record], location, new Date("2026-06-21T12:00Z"));
+    const day = f.daySessions[0];
+    expect(day.sources.gfs.summary.precipitationAmount.value).toBe(14);
+    expect(day.sources.gfs.summary.precipitationAmount.value).toBe(day.average.summary.precipitationAmount.value);
+    expect(day.sources.gfs.hourly[0].precipitationInterval).toEqual({ start: times[0], end: times[1], amount: 2 });
+    expect(f.providers[0].hourly[0].precipitationAmount).toBe(1);
+    expect(f.nightSessions[0].sources.gfs.summary.precipitationAmount.value).toBeNull();
+    expect(f.nightSessions[0].sources.gfs.hourly[0].precipitationInterval).toBeNull();
+    expect(f.nightSessions[0].sources.gfs.referenceHours.before[0].precipitationAmount).toBe(2);
+    const legacy = createCompleteForecast([record, { ...record, id: "metoffice", name: "Met Office" }], location, new Date("2026-06-21T12:00Z"));
+    expect(legacy.daySessions[0].sources.metoffice.summary.precipitationAmount.value).toBe(7);
+  });
+
   it("averages actual matching contributors, not provider summaries covering unequal hours", () => {
     const a = provider("meteoblue", hours.map(time => sample(time, { cloudCover: 10, temperature: 0, precipitationProbability: 0 })));
     const b = provider("gfs", [sample(hours[0], { cloudCover: 90, temperature: 10 })]);

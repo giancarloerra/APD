@@ -115,6 +115,10 @@ class WeatherService {
       catch { throw new Error(`Forecast HTTP ${response.status}: invalid JSON response`); }
       if (!response.ok) throw new Error(result?.error ?? `Forecast HTTP ${response.status}`);
       if (result?.schemaVersion !== 2) throw new Error("Unsupported complete forecast schema");
+      if (forceDownload) {
+        this.downloadStatus = { ...this.downloadStatus, isDownloading: false };
+        this.notifyStatusChange();
+      }
       await this.fetchStatus();
       return result;
     } catch (error) {

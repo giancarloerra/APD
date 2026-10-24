@@ -20,6 +20,20 @@ describe("complete forecast client", () => {
     expect(weatherService.getDownloadStatus().isDownloading).toBe(false);
   });
 
+  it.each([[503, false], [200, true]])("clears the completed local refresh while retaining a successful status response (%i)", async (status, downloading) => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: null, status: { isDownloading: false } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ schemaVersion: 2 })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ isDownloading: true }), { status }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { weatherService } = await import("./weatherService");
+    const listener = vi.fn();
+    weatherService.subscribeToStatus(listener);
+    await weatherService.getCompleteForecast(true);
+    expect(weatherService.getDownloadStatus().isDownloading).toBe(downloading);
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({ isDownloading: downloading }));
+  });
+
   it.each([
     ["non-JSON response", () => new Response("gateway failure", { status: 503 }), "Refresh HTTP 503: invalid JSON response"],
     ["required-store failure", () => new Response(JSON.stringify({ error: "Failed to refresh weather data", status: { error: "Redis write denied" } }), { status: 500 }), "Redis write denied"],

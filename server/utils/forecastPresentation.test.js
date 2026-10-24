@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { UnifiedDayRow, CompleteDayRow } from "../../src/components/UnifiedDayRow.tsx";
 import { WeeklyHeatmap } from "../../src/components/WeeklyHeatmap.tsx";
+import { ForecastHourlyCard } from "../../src/components/HourlyCard.tsx";
 import { processWeatherData } from "../../src/utils/weatherUtils.ts";
 import { processMetOfficeData } from "../../src/utils/metOfficeUtils.ts";
 import { createCompleteForecast } from "./forecastProcessor.js";
@@ -16,6 +17,13 @@ const forecast = createCompleteForecast(records, { lat: 51.5, lon: -.1, alt: 25 
 const compact = html => html.replace(/<!--.*?-->/g, "");
 
 describe("preserved weather presentation", () => {
+  it.each([false, true])("displays averaged hourly and reference rain without floating-point noise (reference: %s)", isReference => {
+    const sample = { ...forecast.providers.find(p => p.id === "metoffice").hourly[0], precipitationAmount: 0.6399999999999999 };
+    const html = renderToStaticMarkup(createElement(ForecastHourlyCard, { sample, sourceId: "average", isReference }));
+    expect(html).toContain("0.64mm");
+    expect(html).not.toContain("0.6399999999999999");
+  });
+
   it("keeps existing provider values, rain units, rounding and score badges for identical inputs", () => {
     const oldHtml = compact(renderToStaticMarkup(createElement(UnifiedDayRow, { meteoblueDay: processWeatherData(mb)[0], metOfficeDay: processMetOfficeData(mo)[0] })));
     const newHtml = compact(renderToStaticMarkup(createElement(CompleteDayRow, { session: forecast.nightSessions[0], providers: forecast.providers })));

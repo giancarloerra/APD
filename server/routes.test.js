@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, it, expect } from "vitest";
+import { afterAll, beforeAll, describe, it, expect, vi } from "vitest";
 import { createApiHarness } from "./test/apiHarness.js";
 import { PROVIDERS, METRICS } from "./services/forecastProviders.js";
 
@@ -14,6 +14,7 @@ beforeAll(async () => {
   app.values.set("weather:meteoblue_data", JSON.stringify({ metadata: { latitude: 51.5, longitude: -.1 }, data_1h: { time: [], isdaylight: [], totalcloudcover: [], precipitation_probability: [], temperature: [] } }));
   for (const provider of PROVIDERS) app.values.set(`weather:provider:${provider.id}`, JSON.stringify({ ...provider, location, status: provider.id === "gfs" ? "ok" : "not_configured", samples: provider.id === "gfs" ? [sample] : [], timeZone: "UTC", error: null }));
   await app.start();
+  cookie = await app.login();
 });
 afterAll(async () => { await app?.close(); });
 
@@ -35,7 +36,6 @@ describe("real HTTP/auth and Redis-client route contracts", () => {
   });
 
   it("saves only valid keys and returns configured/source metadata, never the key", async () => {
-    cookie = await app.login();
     const getStatus = () => fetch(app.base + statusPath, { headers: { Cookie: cookie } }).then(r => r.json());
     expect(await getStatus()).toEqual({ configured: false, source: "none" });
     const put = key => fetch(app.base + keyPath, { method: "PUT", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify({ key }) });
@@ -49,6 +49,35 @@ describe("real HTTP/auth and Redis-client route contracts", () => {
     expect(JSON.stringify(settings)).not.toContain("synthetic-valid-metservice-key");
     expect(settings.apiKeys).toHaveProperty("meteoblue");
     expect(settings.apiKeys).toHaveProperty("telescopius");
+  });
+
+  it("keeps storage exception details out of public forecasts and key responses", async () => {
+    const marker = "synthetic-internal-only-detail";
+    const get = app.values.get.bind(app.values);
+    const read = vi.spyOn(app.values, "get").mockImplementation(key => {
+      if (["weather:provider:gfs", "weather:metservice_api_key"].includes(key)) throw new Error(marker);
+      return get(key);
+    });
+    try {
+      const response = await fetch(app.base + "/api/weather/summary?v=2");
+      expect(response.status).toBe(503);
+      const body = await response.json();
+      expect(body.code).toBe("forecast_unavailable");
+      expect(JSON.stringify(body)).not.toContain(marker);
+      const status = await fetch(app.base + statusPath, { headers: { Cookie: cookie } });
+      expect(status.status).toBe(503);
+      expect(await status.text()).not.toContain(marker);
+    } finally { read.mockRestore(); }
+    const set = app.values.set.bind(app.values);
+    const write = vi.spyOn(app.values, "set").mockImplementation((key, value) => {
+      if (key === "weather:metservice_api_key") throw new Error(marker);
+      return set(key, value);
+    });
+    try {
+      const response = await fetch(app.base + keyPath, { method: "PUT", headers: { Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify({ key: "synthetic-valid-key" }) });
+      expect(response.status).toBe(503);
+      expect(await response.text()).not.toContain(marker);
+    } finally { write.mockRestore(); }
   });
 
   it("returns an explicit unavailable response when no forecast can define sessions", async () => {
@@ -119,6 +148,8 @@ describe("real HTTP/auth and Redis-client route contracts", () => {
   });
 
   it("preserves saved-key persistence across restart and environment precedence without rewriting storage", async () => {
+    const saved = await fetch(app.base + keyPath, { method: "PUT", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify({ key: "synthetic-valid-metservice-key" }) });
+    expect(saved.status).toBe(200);
     await app.stop();
     await app.stop();
     await app.start();

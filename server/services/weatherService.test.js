@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { bindHelpers, weatherService } from "./weatherService.js";
+import { normalizeOpenMeteo } from "./forecastProviders.js";
 
 const location = { lat: 51.5, lon: -.1, alt: 25 };
 const times = ["2026-01-01T22:00", "2026-01-01T23:00", "2026-01-02T00:00"];
@@ -54,6 +55,31 @@ describe("independent provider refresh and compatibility", () => {
     expect(fetchMock).toHaveBeenCalledTimes(8);
   });
 
+  it("refreshes older fractional-clock records without a reset or location change", async () => {
+    const loc = { lat: 27.7172, lon: 85.324, alt: 0 };
+    const body = utc => {
+      const requested = utc ? [...times, "2026-01-02T01:00"] : times;
+      return { ...mo, timezone: utc ? "GMT" : "Asia/Kathmandu", hourly: { time: requested.map(t => Date.parse(t + "Z") / 1000 + (utc ? 0 : 900)), cloud_cover: requested.map((_, i) => 20 + i * 10), temperature_2m: requested.map((_, i) => i + 1), precipitation: requested.map(() => 0), is_day: requested.map(() => 0) } };
+    };
+    bindHelpers(async () => null, async () => loc, redis);
+    fetchMock.mockImplementation(async url => {
+      const request = new URL(String(url));
+      if (request.searchParams.get("models") === "ukmo_global_deterministic_10km") return new Response(JSON.stringify(mo));
+      if (request.searchParams.get("models") === "gfs_global") return new Response(JSON.stringify(body(request.searchParams.get("timezone") === "GMT")));
+      return new Response(JSON.stringify({ error: "Provider unavailable" }), { status: 503 });
+    });
+    await weatherService.downloadWeatherData();
+    values.set("weather:provider:gfs", { ...values.get("weather:provider:gfs"), ...normalizeOpenMeteo(body(false)) });
+    const before = fetchMock.mock.calls.length;
+    const result = await weatherService.getCompleteForecast();
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(before);
+    expect(result.timeZone).toBe("Asia/Kathmandu");
+    expect(result.nightSessions[0].durationHours).toBe(4);
+    expect(result.nightSessions[0].average.hourly[0].cloudCover.sourceIds).toEqual(["metoffice", "gfs"]);
+    expect(result.providers.find(p => p.id === "gfs").hourly.every(h => Date.parse(h.time) % 3600000 === 0)).toBe(true);
+    expect(values.get("weather:metoffice_data")).toEqual(mo);
+  });
+
   it("supports existing installations without a Meteoblue key", async () => {
     bindHelpers(async () => null, async () => location, redis);
     const complete = await weatherService.getCompleteForecast();
@@ -61,6 +87,20 @@ describe("independent provider refresh and compatibility", () => {
     expect(complete.nightSessions[0].sources.meteoblue).toBeUndefined();
     expect(complete.nightSessions[0].average.summary.cloudCover.sourceIds).not.toContain("meteoblue");
     expect(await weatherService.getMetOfficeData()).toEqual(mo);
+  });
+
+  it("keeps other forecasts usable when timezone detection succeeds but aligned model data fails", async () => {
+    bindHelpers(async () => null, async () => ({ lat: 27.7172, lon: 85.324, alt: 0 }), redis);
+    fetchMock.mockImplementation(async url => {
+      const request = new URL(String(url));
+      if (request.searchParams.get("models") === "ukmo_global_deterministic_10km") return new Response(JSON.stringify(mo));
+      if (request.searchParams.get("models") === "gfs_global" && request.searchParams.get("timezone") === "auto") return new Response(JSON.stringify({ ...mo, timezone: "Asia/Kathmandu", hourly: { ...mo.hourly, time: times.map(t => Date.parse(t + "Z") / 1000 + 900) } }));
+      return new Response(JSON.stringify({ error: "Provider unavailable" }), { status: 503 });
+    });
+    const result = await weatherService.getCompleteForecast();
+    expect(result.timeZone).toBe("Asia/Kathmandu");
+    expect(result.providers.find(p => p.id === "gfs")).toMatchObject({ status: "error", error: { httpStatus: 503 } });
+    expect(result.nightSessions[0].average.summary.cloudCover.sourceIds).toEqual(["metoffice"]);
   });
 
   it("retains successful providers, exposes the real failure and recovers on refresh", async () => {
@@ -86,6 +126,20 @@ describe("independent provider refresh and compatibility", () => {
     await expect(weatherService.getCompleteForecast()).rejects.toThrow("Redis write denied");
     expect(weatherService.downloadStatus.isDownloading).toBe(false);
     expect(weatherService.downloadStatus.error).toBe("Redis write denied");
+  });
+
+  it("persists a failed refresh status so restart cannot show an endless download", async () => {
+    redis.get.mockImplementation(async key => {
+      if (key === "weather:provider:ecmwf") throw new Error("Required read denied");
+      return values.get(key) ?? null;
+    });
+    await expect(weatherService.downloadWeatherData()).rejects.toThrow("Required read denied");
+    expect(values.get("weather:download_status")).toMatchObject({ isDownloading: false, error: "Required read denied" });
+    weatherService.initialized = false;
+    weatherService._initPromise = null;
+    weatherService.downloadStatus = { isDownloading: false };
+    await weatherService._startInit();
+    expect(await weatherService.getDownloadStatus()).toMatchObject({ isDownloading: false, error: "Required read denied" });
   });
 
   it("does not reuse an old provider record after a failed refresh, and retries recovery", async () => {

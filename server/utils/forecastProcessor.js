@@ -92,17 +92,17 @@ function averageSummary(hours) {
   return result;
 }
 
-function referenceHours(source, hours, kind, timeZone) {
+function referenceHours(source, hours, kind, timeZone, toHour) {
   if (kind !== "night" || !hours.length) return { before: [], after: [] };
   const first = Date.parse(hours[0].time);
   const last = Date.parse(hours[hours.length - 1].time);
   const afterDate = localParts(iso(last + HOUR), timeZone).date;
   return {
-    before: source.samples.filter(s => Date.parse(s.time) >= first - 4 * HOUR && Date.parse(s.time) < first).map(s => withLocal(s, timeZone)),
+    before: source.samples.filter(s => Date.parse(s.time) >= first - 4 * HOUR && Date.parse(s.time) < first).map(toHour),
     after: source.samples.filter(s => {
       const parts = localParts(s.time, timeZone);
       return Date.parse(s.time) > last && parts.date === afterDate && parts.hour <= 10;
-    }).map(s => withLocal(s, timeZone)),
+    }).map(toHour),
   };
 }
 
@@ -125,10 +125,16 @@ function makeSession(date, kind, times, sources, canonical, timeZone) {
       const isDay = sample.isDay ?? canonical.get(sample.time) ?? [...canonical].find(([time]) => Date.parse(sample.time) >= Date.parse(time) && Date.parse(sample.time) < Date.parse(time) + HOUR)?.[1];
       return isDay === (kind === "day" ? 1 : 0) && sessionDate(localParts(sample.time, timeZone), kind) === date;
     }) : [];
-    const hours = native.map(sample => withLocal(sample, timeZone));
+    const toHour = sample => {
+      if (legacy) return withLocal(sample, timeZone);
+      const end = iso(Date.parse(sample.time) + HOUR);
+      const amount = amountAt(source, sample.time, end);
+      return withLocal({ ...sample, precipitationAmount: amount, precipitationInterval: amount !== null ? { start: sample.time, end, amount } : sample.precipitationInterval?.start === sample.time ? sample.precipitationInterval : null }, timeZone);
+    };
+    const hours = native.map(toHour);
     const expectedTimes = legacy && source.status === "ok" ? (source.clock ?? source.samples).filter(sample => sample.isDay === (kind === "day" ? 1 : 0) && sessionDate(localParts(sample.time, timeZone), kind) === date).map(sample => sample.time) : times;
     const reason = hours.length ? null : unavailableReason(source, times);
-    bySource[source.id] = { id: source.id, name: source.name, status: source.status, expectedTimestamps: expectedTimes, summary: sourceSummary(source, hours, expectedTimes.length), hourly: hours, referenceHours: referenceHours(source, hours, kind, timeZone), unavailableReason: reason };
+    bySource[source.id] = { id: source.id, name: source.name, status: source.status, expectedTimestamps: expectedTimes, summary: sourceSummary(source, hours, expectedTimes.length), hourly: hours, referenceHours: referenceHours(source, hours, kind, timeZone, toHour), unavailableReason: reason };
   }
   const timer = sources.find(s => s.id === "timer");
   const native = timer?.status === "ok" ? timer.samples.filter(sample => times.some(time => Date.parse(sample.time) >= Date.parse(time) && Date.parse(sample.time) < Date.parse(time) + HOUR)).map(s => withLocal(s, timeZone)) : [];
@@ -165,6 +171,7 @@ export function createCompleteForecast(records, location, now = new Date()) {
     for (const sample of source.clock ?? source.samples) if (!canonical.has(sample.time) && (sample.isDay === 0 || sample.isDay === 1)) canonical.set(sample.time, sample.isDay);
   }
   if (!canonical.size) throw new ProviderError("No available forecast supplied day/night flags", "session_boundaries_unavailable");
+  if (new Set([...canonical.keys()].map(time => Date.parse(time) % HOUR)).size > 1) throw new ProviderError("Forecast providers have incompatible hourly clocks; refresh forecasts", "hourly_alignment_unavailable");
   const today = localParts(now.toISOString(), timeZone).date;
   const groups = { night: new Map(), day: new Map() };
   for (const [time, isDay] of [...canonical].sort(([a], [b]) => a.localeCompare(b))) {
@@ -185,7 +192,7 @@ export function createCompleteForecast(records, location, now = new Date()) {
     location: { latitude: location.lat, longitude: location.lon, elevation: location.alt }, units: { ...METRICS, seeing: "arcsec", transparency: "mag/airmass" },
     providers: sources.map(({ samples, cache, clock, units, ...metadata }) => ({ ...metadata, availableFrom: samples[0]?.time ?? null, availableUntil: samples[samples.length - 1]?.time ?? null, sampleCount: samples.length, units, hourly: samples.map(s => withLocal(s, timeZone)) })),
     scoreDefinition: { meteoblue: "round(max(0, 100 - 0.8*meanCloud - 0.2*meanProbability))", cloudOnly: "round(max(0, 100 - 0.8*meanCloud))", average: "mean of available provider scores per timestamp, then mean across session timestamps", categorical: "not converted to numeric cloud cover or scored", qualityThresholds: { Excellent: 90, "Very Good": 75, Good: 60, Fair: 45, Poor: 30, "Very Poor": 0 } },
-    aggregation: { method: "unweighted arithmetic mean per timestamp and metric", sessionBoundaries: "existing provider day/night flags; 00:00–06:00 belongs to previous night", precipitation: "average matching one-hour accumulation intervals; never repeat a multi-hour total", sourceOverlap: "MET Norway global uses ECMWF; 7Timer is GFS-derived. Sources are not independent votes.", missing: "null plus contributors, coverage and reason; never zero or stale substitution" },
+    aggregation: { method: "unweighted arithmetic mean per timestamp and metric", sessionBoundaries: "existing provider day/night flags on a uniform hourly clock; 00:00–06:00 belongs to previous night", precipitation: "average and added-provider session hours use matching forward one-hour accumulations; providers.hourly retains native intervals and fields; legacy per-source calculations remain unchanged; never repeat a multi-hour total", sourceOverlap: "MET Norway global uses ECMWF; 7Timer is GFS-derived. Sources are not independent votes.", missing: "null plus contributors, coverage and reason; never zero or stale substitution" },
     summary: { overallNightScore: overall === null ? null : Math.round(overall), bestNight: best(nightSessions), bestDay: best(daySessions) },
     nightSessions, daySessions,
   };

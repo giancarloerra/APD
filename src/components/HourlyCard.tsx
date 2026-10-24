@@ -24,7 +24,7 @@ export function ForecastHourlyCard({ sample, sourceId, isSolar = false, isRefere
   const brightness = sample.skyBrightness;
   const wind = sample.windSpeed;
   const cloudText = sample.cloudBand ? formatBand(sample.cloudBand) : cloud === null ? "—" : `${Math.round(cloud)}%`;
-  const rainText = rain === null ? "—" : `${rate ? Number(rain.toFixed(2)) : rain}${probability ? "%" : rate ? "mm/h" : intervalHours > 1 ? `mm/${intervalHours}h` : "mm"}`;
+  const rainText = rain === null ? "—" : `${rate || sourceId === "average" ? Number(rain.toFixed(2)) : rain}${probability ? "%" : rate ? "mm/h" : intervalHours > 1 ? `mm/${intervalHours}h` : "mm"}`;
   if (isReference) return (
     <div className="bg-slate-800 border border-slate-600 rounded p-1.5 min-w-[60px] flex-shrink-0 opacity-60">
       <div className="text-center">

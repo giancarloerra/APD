@@ -2,6 +2,32 @@ import { describe, it, expect, vi } from "vitest";
 import { PROVIDERS, METRICS, normalizeMeteoblue, normalizeOpenMeteo, normalizeMetNorway, normalizeSevenTimer, normalizeMetService, requestProvider, fetchAdditionalProvider } from "./forecastProviders.js";
 
 describe("provider adapters", () => {
+  it.each([["Asia/Kathmandu", 15], ["Asia/Kolkata", 30]])("fetches real UTC-aligned model values while retaining %s", async (timeZone, minutes) => {
+    const times = [8, 9, 10].map(hour => Date.parse(`2026-01-01T${String(hour).padStart(2, "0")}:00:00Z`) / 1000);
+    const body = (utc = false) => ({ timezone: utc ? "GMT" : timeZone, hourly: { time: (utc ? [...times, times.at(-1) + 3600] : times).map(t => t + (utc ? 0 : minutes * 60)), cloud_cover: utc ? [20, 30, 40, 50] : [80, 30, 40], temperature_2m: utc ? [8, 9, 10, 11] : [8, 9, 10], precipitation: utc ? [0, 0, 0, 0] : [0, 0, 0], is_day: utc ? [1, 1, 1, 1] : [1, 1, 1] } });
+    const fetchImpl = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(body()))).mockResolvedValueOnce(new Response(JSON.stringify(body(true))));
+    const loc = timeZone === "Asia/Kolkata" ? { lat: 19.076, lon: 72.8777, alt: 0 } : { lat: 27.7172, lon: 85.324, alt: 0 };
+    const result = await fetchAdditionalProvider(PROVIDERS.find(p => p.id === "gfs"), loc, null, fetchImpl);
+    expect(fetchImpl.mock.calls.map(([url]) => new URL(String(url)).searchParams.get("timezone"))).toEqual(["auto", "GMT"]);
+    const aligned = new URL(String(fetchImpl.mock.calls[1][0]));
+    expect(aligned.searchParams.get("start_hour")).toBe("2026-01-01T08:00");
+    expect(aligned.searchParams.get("end_hour")).toBe("2026-01-01T11:00");
+    expect(result.timeZone).toBe(timeZone);
+    expect(result.samples[0].time).toBe("2026-01-01T08:00:00.000Z");
+    expect(result.samples[0].cloudCover).toBe(20);
+  });
+
+  it("keeps one request when the model's native UTC clock is already aligned", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ timezone: "Europe/London", hourly: { time: [1767304800], cloud_cover: [10], is_day: [0] } })));
+    expect((await fetchAdditionalProvider(PROVIDERS.find(p => p.id === "gfs"), { lat: 51.5, lon: -.1, alt: 25 }, null, fetchImpl)).samples[0].cloudCover).toBe(10);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not substitute an unaligned series when its UTC request fails", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ timezone: "Asia/Kathmandu", hourly: { time: [1767255300], cloud_cover: [80], is_day: [1] } }))).mockResolvedValueOnce(new Response(JSON.stringify({ error: "Unavailable" }), { status: 503 }));
+    await expect(fetchAdditionalProvider(PROVIDERS.find(p => p.id === "gfs"), { lat: 27.7172, lon: 85.324, alt: 0 }, null, fetchImpl)).rejects.toMatchObject({ code: "upstream_error", status: 503, timeZone: "Asia/Kathmandu" });
+  });
+
   it("preserves Meteoblue probability and sky fields, with explicit UTC and wind units", () => {
     const data = { metadata: { utc_timeoffset: 1 }, units: {}, data_1h: { time: ["2026-01-01 22:00"], totalcloudcover: [0], temperature: [0], precipitation_probability: [5], windspeed: [2], moonlight_actual: [.01], nightskybrightness_actual: [.004], isdaylight: [0] } };
     const sample = normalizeMeteoblue(data).samples[0];
@@ -13,7 +39,7 @@ describe("provider adapters", () => {
     expect(METRICS.skyBrightness).toBe("lux");
     expect(sample.temperature).toBe(0);
     // Meteoblue uses the request-time offset throughout the forecast, including
-    // across DST: https://docs.meteoblue.com/en/weather-apis/forecast-api/forecast-data
+    // across DST: https://my.meteoblue.com/packages/openapi.json
     const transition = normalizeMeteoblue({ metadata: { utc_timeoffset: 1 }, data_1h: { time: ["2026-10-25 01:00", "2026-10-25 02:00"] } });
     expect(transition.samples.map(hour => hour.time)).toEqual(["2026-10-25T00:00:00.000Z", "2026-10-25T01:00:00.000Z"]);
   });
@@ -83,6 +109,7 @@ describe("provider adapters", () => {
   });
 
   it("distinguishes outside-coverage responses, timeouts and invalid JSON", async () => {
+    await expect(requestProvider("https://example.invalid", { fetchImpl: async () => new Response("Bad gateway", { status: 502, statusText: "Bad Gateway" }) })).rejects.toMatchObject({ code: "upstream_error", status: 502, message: "HTTP 502: Bad Gateway" });
     await expect(requestProvider("https://example.invalid", { fetchImpl: async () => new Response(JSON.stringify({ reason: "No data is available for this location" }), { status: 400 }) })).rejects.toMatchObject({ code: "outside_geographic_coverage" });
     await expect(requestProvider("https://example.invalid", { fetchImpl: async () => { throw new DOMException("timeout", "TimeoutError"); } })).rejects.toMatchObject({ code: "timeout" });
     await expect(requestProvider("https://example.invalid", { fetchImpl: async () => ({ status: 200, text: async () => { throw new DOMException("timeout", "TimeoutError"); } }) })).rejects.toMatchObject({ code: "timeout" });

@@ -12,6 +12,7 @@ import { Redis } from "@upstash/redis";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { weatherService, bindHelpers } from "./services/weatherService.js";
+import { ProviderError } from "./services/forecastProviders.js";
 import { createWeatherSummary } from "./utils/weatherProcessor.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -300,7 +301,8 @@ app.get("/api/weather/summary", async (req, res) => {
   } catch (error) {
     console.error("Error creating weather summary:", error);
     if (req.query.v === "2") {
-      return res.status(503).json({ error: error.message, code: error.code ?? "forecast_unavailable", providers: error.providers });
+      const known = error instanceof ProviderError;
+      return res.status(503).json({ error: known ? error.message : "Forecast unavailable; check server logs", code: known ? error.code : "forecast_unavailable", providers: known ? error.providers : undefined });
     }
     res.status(500).json({ error: "Failed to create weather summary" });
   }
@@ -476,7 +478,8 @@ app.get("/api/weather/metservice/key-status", async (req, res) => {
     const key = await getMetServiceKey();
     res.json({ configured: !!key, source: process.env.METSERVICE_API_KEY ? "env" : key ? "redis" : "none" });
   } catch (error) {
-    res.status(503).json({ error: `Failed to read MetService key status: ${error.message}` });
+    console.error("MetService key status error:", error);
+    res.status(503).json({ error: "Failed to read MetService key status; check server logs" });
   }
 });
 
@@ -487,7 +490,8 @@ app.put("/api/weather/metservice/key", async (req, res) => {
     await redis.set(REDIS_KEY_METSERVICE_KEY, key);
     res.json({ ok: true });
   } catch (error) {
-    res.status(503).json({ error: `Failed to save MetService key: ${error.message}` });
+    console.error("MetService key save error:", error);
+    res.status(503).json({ error: "Failed to save MetService key; check server logs" });
   }
 });
 

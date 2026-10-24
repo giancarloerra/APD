@@ -1,4 +1,4 @@
-import { PROVIDERS, ProviderError, fetchAdditionalProvider, normalizeMeteoblue, normalizeOpenMeteo, requestProvider } from "./forecastProviders.js";
+import { PROVIDERS, ProviderError, fetchAdditionalProvider, hasUnalignedHourlyClock, normalizeMeteoblue, normalizeOpenMeteo, requestProvider } from "./forecastProviders.js";
 import { createCompleteForecast } from "../utils/forecastProcessor.js";
 
 // URLs are now built dynamically — key and location come from server/index.js exports
@@ -146,6 +146,7 @@ export class WeatherService {
       this.downloadStatus.isDownloading = false;
       this.downloadStatus.error = error.message;
       this.notifyStatusChange();
+      await this.saveDownloadStatus();
       throw error;
     }
     finally { this._downloadPromise = null; }
@@ -238,7 +239,7 @@ export class WeatherService {
           record = await fetchAdditionalProvider(provider, loc, cached, fetch, metserviceKey);
         }
       } catch (error) {
-        record = { ...provider, location: loc, status: error.code === "outside_geographic_coverage" ? "outside_coverage" : "error", samples: [], timeZone: cached?.timeZone, fetchedAt: new Date().toISOString(), error: { code: error.code ?? "upstream_error", message: error.message, httpStatus: error.status ?? null } };
+        record = { ...provider, location: loc, status: error.code === "outside_geographic_coverage" ? "outside_coverage" : "error", samples: [], timeZone: error.timeZone ?? cached?.timeZone, fetchedAt: new Date().toISOString(), error: { code: error.code ?? "upstream_error", message: error.message, httpStatus: error.status ?? null } };
       }
       await _redis.set(providerKey(provider.id), record);
       return record;
@@ -270,7 +271,7 @@ export class WeatherService {
     await this.ensureInitialized();
     if (this._downloadPromise) await this._downloadPromise;
     let records = await Promise.all(PROVIDERS.map(provider => _redis.get(providerKey(provider.id))));
-    if (records.some(record => !record) || this.shouldDownloadNewData() || this.downloadStatus.error || this.downloadStatus.isDownloading) {
+    if (records.some(record => !record || hasUnalignedHourlyClock(record)) || this.shouldDownloadNewData() || this.downloadStatus.error || this.downloadStatus.isDownloading) {
       await this.downloadWeatherData();
       records = await Promise.all(PROVIDERS.map(provider => _redis.get(providerKey(provider.id))));
     }

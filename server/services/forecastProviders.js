@@ -46,7 +46,7 @@ export async function requestProvider(url, { headers = {}, secret, fetchImpl = f
   }
   let data;
   try { data = JSON.parse(text); } catch {
-    throw new ProviderError(`Upstream HTTP ${response.status}: response is not valid JSON`, "invalid_response", response.status);
+    if (response.ok) throw new ProviderError(`Upstream HTTP ${response.status}: response is not valid JSON`, "invalid_response", response.status);
   }
   if (!response.ok) {
     const reason = data?.reason ?? data?.error?.message ?? data?.error ?? data?.message ?? response.statusText;
@@ -101,6 +101,10 @@ export function normalizeOpenMeteo(data) {
   }).filter(s => Object.keys(METRICS).some(key => s[key] !== null));
   const clock = hourly.time.map((time, i) => ({ time: typeof time === "number" ? new Date(time * 1000).toISOString() : new Date(`${time}Z`).toISOString(), isDay: hourly.is_day?.[i] ?? null }));
   return { samples: assertSamples(samples), clock, timeZone: data.timezone, forecastRun: null, units: data.hourly_units, outputStepMinutes: 60, nativeStepMinutes: null };
+}
+
+export function hasUnalignedHourlyClock(record) {
+  return (record?.clock ?? []).some(sample => Date.parse(sample.time) % 3600000 !== 0);
 }
 
 export function normalizeMetNorway(data) {
@@ -172,7 +176,8 @@ export function normalizeMetService(data) {
 export async function fetchAdditionalProvider(provider, location, previous, fetchImpl = fetch, apiKey) {
   let url;
   const headers = {};
-  if (["ukv", "ecmwf", "gfs", "icon"].includes(provider.id)) {
+  const openMeteo = ["ukv", "ecmwf", "gfs", "icon"].includes(provider.id);
+  if (openMeteo) {
     const hourly = "precipitation,cloud_cover,temperature_2m,is_day,wind_speed_10m,relative_humidity_2m" + (provider.id === "gfs" ? ",precipitation_probability" : "");
     const query = new URLSearchParams({ latitude: String(location.lat), longitude: String(location.lon), hourly, models: provider.model, timezone: "auto", timeformat: "unixtime" });
     url = `https://api.open-meteo.com/v1/forecast?${query}`;
@@ -198,6 +203,25 @@ export async function fetchAdditionalProvider(provider, location, previous, fetc
     if (!previous?.samples?.length) throw new ProviderError("304 without a cached forecast", "invalid_response", 304);
     return { ...previous, cache, checkedAt: new Date().toISOString() };
   }
-  const normalized = provider.id === "timer" ? normalizeSevenTimer(result.data) : provider.id === "metnorway" ? normalizeMetNorway(result.data) : normalizeOpenMeteo(result.data);
+  const timeZone = openMeteo ? result.data?.timezone : undefined;
+  let normalized;
+  try {
+    normalized = provider.id === "timer" ? normalizeSevenTimer(result.data) : provider.id === "metnorway" ? normalizeMetNorway(result.data) : normalizeOpenMeteo(result.data);
+    if (openMeteo && hasUnalignedHourlyClock(normalized)) {
+      // Keep the detected observer timezone and span; retrieve real UTC-hour values.
+      const alignedUrl = new URL(url);
+      alignedUrl.searchParams.set("timezone", "GMT");
+      alignedUrl.searchParams.set("start_hour", new Date(Math.floor(Date.parse(normalized.clock[0].time) / 3600000) * 3600000).toISOString().slice(0, 16));
+      alignedUrl.searchParams.set("end_hour", new Date(Math.ceil(Date.parse(normalized.clock.at(-1).time) / 3600000) * 3600000).toISOString().slice(0, 16));
+      const aligned = await requestProvider(alignedUrl.toString(), { headers, fetchImpl });
+      normalized = { ...normalizeOpenMeteo(aligned.data), timeZone };
+      cache.expires = aligned.response.headers.get("expires");
+      cache.lastModified = aligned.response.headers.get("last-modified");
+      if (hasUnalignedHourlyClock(normalized)) throw new ProviderError("Open-Meteo did not return UTC-aligned hourly timestamps", "invalid_response");
+    }
+  } catch (error) {
+    if (typeof timeZone === "string") error.timeZone = timeZone;
+    throw error;
+  }
   return { ...provider, ...normalized, location, status: "ok", fetchedAt: new Date().toISOString(), cache, error: null };
 }

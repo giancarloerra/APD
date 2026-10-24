@@ -687,6 +687,8 @@ Coverage references: [Open-Meteo model documentation](https://open-meteo.com/en/
 
 The selected Open-Meteo models are `ukmo_global_deterministic_10km`, `ukmo_uk_deterministic_2km`, `ecmwf_ifs`, `gfs_global` and `icon_global`. Actual returned horizons and missing fields are reported, not replaced with another model's data. Hourly API output does not imply native hourly model resolution.
 
+Open-Meteo's detected observer timezone is retained for display. When a new model's hourly clock falls between UTC hours, APD retrieves that model in GMT as well, retaining the original forecast span, so averages compare actual matching instants. This extra keyless request is needed only for fractional-hour offsets. Meteoblue keeps its existing single request. Cached records using the former clock are refreshed automatically.
+
 ### Integration
 
 - **Time Structure**: explicit UTC instants and observer-local dates. Existing provider day/night flags and the early-morning night-date assignment are retained; the API reports expected timestamps and coverage
@@ -696,7 +698,7 @@ The selected Open-Meteo models are `ukmo_global_deterministic_10km`, `ukmo_uk_de
 - **Scoring difference**: Meteoblue score uses cloud cover (80%) + precipitation (20%). Met Office score uses cloud cover only (Met Office reports precipitation in mm rather than %, so the precipitation penalty is not applied). Both are scaled 0–100.
 - **Average**: arithmetic mean of actual comparable values per timestamp, then session summaries from those hourly aggregates. The average score is the mean of available provider scores per timestamp, then across session timestamps. It is not a confidence percentage
 - **Missing data**: optional unconfigured providers are omitted from forecast choices. Actual errors, geographic limits, shorter horizons and individual missing fields remain distinct. Nulls are never clear weather or zero rain
-- **Rain**: probability, accumulation and rate are separate. Only matching one-hour accumulation intervals enter hourly rain-amount averages; multi-hour totals are not repeated. Incomplete session rain totals remain unavailable
+- **Rain**: probability, accumulation and rate are separate. Average and added-provider session/hourly/reference amounts cover the matching forward one-hour interval; multi-hour totals are not repeated. Provider-level hourly data retains the native fields and intervals. The original Meteoblue and Met Office per-source calculations remain unchanged. Incomplete session rain totals remain unavailable
 - **Overlap**: MET Norway's global data uses ECMWF and 7Timer is GFS-derived. Source counts are not independent model votes
 
 ---
