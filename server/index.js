@@ -261,6 +261,10 @@ app.get("/login", (req, res) => {
 });
 
 // Serve static files from the dist directory (if it exists)
+app.get("/vendor/astronomy-engine.js", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../node_modules/astronomy-engine/astronomy.browser.min.js"));
+});
+
 const distPath = path.join(__dirname, "../dist");
 if (fs.existsSync(distPath)) {
   // Static assets (JS/CSS/images) are public — no auth needed

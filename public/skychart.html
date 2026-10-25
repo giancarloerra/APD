@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/3.6.5/aladin.js" charset="utf-8"></script>
+    <script src="/vendor/astronomy-engine.js"></script>
+    <script src="/solar-system.js"></script>
     <link rel="stylesheet" href="/theme.css">
     <style>
         @keyframes starPulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.7); } }
@@ -124,6 +126,12 @@
         .planet-marker .planet-name {
             display: block; font-size: 0.6rem; margin-top: 2px; font-weight: bold;
             text-shadow: 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000;
+        }
+        .angular-size .moon-emoji, .angular-size .planet-dot { display: none; }
+        #solar-size-error {
+            position: absolute; top: 54px; left: 12px; right: 12px; z-index: 1090;
+            padding: 8px 12px; background: #450a0a; color: #fecaca; font-size: 0.8rem;
+            border: 1px solid #ef4444; border-radius: 4px; pointer-events: none;
         }
 
         /* Red night mode overlay */
@@ -494,6 +502,7 @@
         <canvas id="overlay-canvas"></canvas>
         <canvas id="darken-canvas"></canvas>
         <div id="labels-container"></div>
+        <div id="solar-size-error" role="alert" hidden></div>
 
         <div id="night-mode-overlay"></div>
         <div id="fov-overlay">
@@ -714,6 +723,14 @@
                     <label class="overlay-row"><input type="checkbox" id="chk-star-labels"> Star Names</label>
                     <label class="overlay-row"><input type="checkbox" id="chk-moon"> Moon</label>
                     <label class="overlay-row"><input type="checkbox" id="chk-planets"> Planets</label>
+                    <div class="control-group" style="margin: 8px 0;">
+                        <label for="solar-system-size">Moon / planet size</label>
+                        <select id="solar-system-size">
+                            <option value="markers">Markers (easy to see)</option>
+                            <option value="angular">True angular size (outlines)</option>
+                        </select>
+                        <small style="display:block;color:#aaa;font-size:0.65rem;margin-top:4px;">True-size outlines scale with zoom. Positions are approximate to 1 arcminute.</small>
+                    </div>
                     <label class="overlay-row"><input type="checkbox" id="chk-nightmode"> 🔴 Red Night Mode</label>
                 </div>
             </div>
@@ -1007,6 +1024,8 @@
     let activeFovId = 1;
 
     const API_BASE = window.location.origin;
+    let angularSizeLocation = null;
+    let angularSizeLocationError = 'Loading observing location.';
 
     // ===== AUTH CHECK =====
     fetch(API_BASE + '/api/auth/check', { credentials: 'include' })
@@ -1022,13 +1041,17 @@
           if (loc.lat != null && loc.lon != null) {
             obsLat = loc.lat;
             obsLon = loc.lon;
+            angularSizeLocation = { lat: loc.lat, lon: loc.lon, alt: loc.alt };
+            angularSizeLocationError = '';
             const latEl = document.getElementById('input-lat');
             const lonEl = document.getElementById('input-lon');
             if (latEl) latEl.value = obsLat.toFixed(4);
             if (lonEl) lonEl.value = obsLon.toFixed(4);
           }
+        } else {
+          angularSizeLocationError = `Observing location request failed (HTTP ${r.status}).`;
         }
-      } catch (_) {}
+      } catch (error) { angularSizeLocationError = `Observing location request failed: ${error.message}`; }
     }
 
     function pushLocationToServer() {
@@ -1378,6 +1401,7 @@
                 chkStarLabels: document.getElementById('chk-star-labels').checked,
                 chkMoon: document.getElementById('chk-moon').checked,
                 chkPlanets: document.getElementById('chk-planets').checked,
+                solarSystemSize: document.getElementById('solar-system-size').value,
                 chkNightMode: document.getElementById('chk-nightmode').checked,
                 chkDSO: document.getElementById('chk-dso').checked,
                 chkDsoM: document.getElementById('chk-dso-m').checked,
@@ -1451,6 +1475,7 @@
             if (s.chkStarLabels != null) document.getElementById('chk-star-labels').checked = s.chkStarLabels;
             if (s.chkMoon != null) document.getElementById('chk-moon').checked = s.chkMoon;
             if (s.chkPlanets != null) document.getElementById('chk-planets').checked = s.chkPlanets;
+            document.getElementById('solar-system-size').value = s.solarSystemSize === 'angular' ? 'angular' : 'markers';
             if (s.chkNightMode != null) {
                 document.getElementById('chk-nightmode').checked = s.chkNightMode;
                 document.getElementById('night-mode-overlay').style.display = s.chkNightMode ? 'block' : 'none';
@@ -2678,6 +2703,13 @@
             }
         }
 
+        const angularSize = document.getElementById('solar-system-size').value === 'angular';
+        const angularBodies = angularSize ? updateAngularBodies(size) : [];
+        if (!angularSize) document.getElementById('solar-size-error').hidden = true;
+        moonMarkerEl.classList.toggle('angular-size', angularSize);
+        Object.values(planetMarkerEls).forEach(el => el.classList.toggle('angular-size', angularSize));
+
+        if (!angularSize) {
         // Moon marker
         if (moonMarkerEl && document.getElementById('chk-moon').checked) {
             let jd = getJD(getObsTime());
@@ -2700,6 +2732,7 @@
         Object.keys(PLANETS).forEach(name => {
             let el = planetMarkerEls[name];
             if (!el) return;
+            el.querySelector('.planet-name').textContent = name;
             if (showPlanets) {
                 let jd = getJD(getObsTime());
                 let pos = getPlanetPosition(name, jd);
@@ -2714,6 +2747,7 @@
                 el.style.display = 'none';
             }
         });
+        }
 
         // Night mode overlay
         document.getElementById('night-mode-overlay').style.display =
@@ -2721,6 +2755,68 @@
 
         // Draw canvas overlay
         drawOverlayCanvas();
+        if (angularSize && angularBodies) drawAngularBodies(angularBodies, size);
+    }
+
+    function updateAngularBodies(size) {
+        const errorEl = document.getElementById('solar-size-error');
+        moonMarkerEl.style.display = 'none';
+        Object.values(planetMarkerEls).forEach(el => { el.style.display = 'none'; });
+        const names = [];
+        if (document.getElementById('chk-moon').checked) names.push('Moon');
+        if (document.getElementById('chk-planets').checked) names.push(...Object.keys(PLANETS));
+        try {
+            if (!names.length) { errorEl.hidden = true; return []; }
+            if (!angularSizeLocation) throw new Error(angularSizeLocationError);
+            if (!globalThis.APDSolarSystem) throw new Error('Angular-size drawing library did not load. Reload the sky chart.');
+            const time = getObsTime();
+            const bodies = names.map(name => globalThis.APDSolarSystem.calculate(name, time, angularSizeLocation));
+            bodies.forEach(body => {
+                const pix = safeW2P(body.ra, body.dec);
+                const el = body.name === 'Moon' ? moonMarkerEl : planetMarkerEls[body.name];
+                if (!pix || pix[0] < -30 || pix[0] > size[0] + 30 || pix[1] < -30 || pix[1] > size[1] + 30) return;
+                const text = body.name + ' ' + globalThis.APDSolarSystem.formatDiameter(body.diameter) +
+                    (body.ringDiameter ? ' · rings ' + globalThis.APDSolarSystem.formatDiameter(body.ringDiameter) : '');
+                el.querySelector(body.name === 'Moon' ? '.moon-info' : '.planet-name').textContent = text;
+                el.style.transform = `translate(${pix[0] + 8}px, ${pix[1] + 8}px)`;
+                el.style.display = 'block';
+            });
+            errorEl.hidden = true;
+            return bodies;
+        } catch (error) {
+            const message = 'True angular size unavailable: ' + error.message;
+            if (errorEl.textContent !== message) errorEl.textContent = message;
+            errorEl.hidden = false;
+            return null;
+        }
+    }
+
+    function drawAngularBodies(bodies, size) {
+        const ctx = document.getElementById('overlay-canvas').getContext('2d');
+        const fov = aladin.getFov();
+        const pixelsPerDegree = size[0] / (Array.isArray(fov) ? fov[0] : fov);
+        ctx.save();
+        ctx.lineWidth = 1;
+        bodies.forEach(body => {
+            ctx.strokeStyle = body.name === 'Moon' ? '#ffffdd' : PLANETS[body.name].color;
+            // A partial lunar limb can be much larger than the viewport at close zoom.
+            const maxJump = Math.max(size[0], size[1], (body.ringDiameter || body.diameter) * pixelsPerDegree) / 2;
+            body.outlines.forEach(outline => {
+                ctx.beginPath();
+                let previous = null;
+                outline.forEach(([ra, dec]) => {
+                    const point = safeW2P(ra, dec);
+                    if (point && previous && pixDist(point, previous) < maxJump) {
+                        ctx.lineTo(point[0], point[1]);
+                    } else if (point) {
+                        ctx.moveTo(point[0], point[1]);
+                    }
+                    previous = point;
+                });
+                ctx.stroke();
+            });
+        });
+        ctx.restore();
     }
 
     // ===== SUB-PANEL TOGGLE =====

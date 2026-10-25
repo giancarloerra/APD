@@ -35,6 +35,7 @@ const SKY_FEATURES = [
   "Time travel — step sky forward/backward by ±h / ±d / ±month",
   "Constellation lines, names, star dots, star name labels",
   "Moon marker with phase info, planet positions",
+  "Optional true-angular-size Moon/planet outlines and Saturn rings, scaling with map zoom",
   "Red night mode — full-screen red overlay for dark adaptation",
   "Horizon line with optional ground darkening",
   "Alt-Az and equatorial grids with shared opacity slider",
