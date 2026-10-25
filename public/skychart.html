@@ -2566,7 +2566,8 @@
 
         // Camera FOV box — with view rotation correction
         let fov = aladin.getFov();
-        let scale = size[0] / (Array.isArray(fov) ? fov[0] : fov);
+        // Aladin's projection references its FoV to the longer viewport axis.
+        let scale = Math.max(size[0], size[1]) / (Array.isArray(fov) ? fov[0] : fov);
         let box = document.getElementById('camera-fov-box');
         let fovOverlay = document.getElementById('fov-overlay');
         box.style.width = (activeFov[0] * scale) + 'px';
@@ -2794,7 +2795,7 @@
     function drawAngularBodies(bodies, size) {
         const ctx = document.getElementById('overlay-canvas').getContext('2d');
         const fov = aladin.getFov();
-        const pixelsPerDegree = size[0] / (Array.isArray(fov) ? fov[0] : fov);
+        const pixelsPerDegree = Math.max(size[0], size[1]) / (Array.isArray(fov) ? fov[0] : fov);
         ctx.save();
         ctx.lineWidth = 1;
         bodies.forEach(body => {

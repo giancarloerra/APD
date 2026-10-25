@@ -253,7 +253,7 @@ Open your browser and go to **http://localhost:3001** — APD is now running on 
 
 - **Interactive sky map** — Aladin Lite v3 with 17+ selectable surveys across **Optical** (DSS2, PanSTARRS, SDSS9, Mellinger, DECaPS, DESI Legacy), **H-Alpha** (VTSS, Fink, SHASSA), **Infrared** (2MASS, AllWISE, AKARI), **UV / X-Ray / Gamma** (GALEX UV, XMM, Fermi, ROSAT), and **Radio** (NVSS, GLEAM)
 - **Two modes** — *Framing* (camera overlay tools) and *Sky Chart* (pure sky exploration)
-- **Camera FOV overlay** — define sensor FOVs by width × height (degrees), saved to Redis; lock to any target
+- **Camera FOV overlay** — define sensor FOVs by width × height (degrees), saved to Redis; lock to any target. Frames and mosaic tiles retain their angular scale when resizing the view or changing screen orientation.
 - **Mosaic planner** — overlay a configurable N × M tile grid with adjustable overlap percentage
 - **Camera angle offset** — rotation slider for precise framing alignment
 - **Equatorial & Alt-Az mount support** — FOV box aligned to RA/Dec or horizon depending on mount type

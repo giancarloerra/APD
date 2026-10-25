@@ -29,6 +29,95 @@ function separation(a, b) {
   return 2 * Math.asin(Math.min(1, Math.sqrt(haversine))) / radians;
 }
 
+function framingScene(initialSize, { mosaic = false, locked = false, rotation = 0 } = {}) {
+  const moon = api.calculate("Moon", date, location);
+  const scene = { size: initialSize, aperture: 6 };
+  // Independent STG projection reference. Aladin's angular aperture spans the
+  // longer viewport axis; real browser acceptance checks verify this contract.
+  const project = (ra, dec) => {
+    const delta = (ra - moon.ra) * radians, d = dec * radians, center = moon.dec * radians;
+    const denominator = 1 + Math.sin(center) * Math.sin(d) + Math.cos(center) * Math.cos(d) * Math.cos(delta);
+    const x = 2 * Math.cos(d) * Math.sin(delta) / denominator;
+    const y = 2 * (Math.cos(center) * Math.sin(d) - Math.sin(center) * Math.cos(d) * Math.cos(delta)) / denominator;
+    const span = scene.size[0] >= scene.size[1] ? scene.size[0] : scene.size[1];
+    const focalLength = span / (4 * Math.tan(scene.aperture * radians / 4));
+    return [scene.size[0] / 2 - x * focalLength, scene.size[1] / 2 - y * focalLength];
+  };
+  const elements = new Map();
+  const element = id => {
+    if (!elements.has(id)) elements.set(id, {
+      value: id === "solar-system-size" ? "markers" : id === "mount-select" ? "eq" : String(rotation),
+      checked: false, style: {}, classList: { toggle() {} },
+    });
+    return elements.get(id);
+  };
+  const tiles = Array.from({ length: 4 }, () => ({ style: {} }));
+  const context = {
+    document: { getElementById: element }, requestAnimationFrame() {},
+    aladin: {
+      getRaDec: () => [moon.ra, moon.dec], getSize: () => scene.size,
+      getFov: () => [scene.aperture, scene.aperture * scene.size[1] / scene.size[0]],
+      world2pix: project,
+    },
+    getJD: () => 0, getLST: () => 0, getObsTime: () => new Date(date),
+    getViewRotation: () => 0, obsLat: location.lat, obsLon: location.lon,
+    activeFov: [2, 1], fovLocked: locked, fovLockedRaDec: [moon.ra, moon.dec],
+    mosaicActive: mosaic, mosaicCols: 2, mosaicRows: 2, mosaicOverlap: 10, mosaicTileEls: tiles,
+    horizonEnabled: false, cardinalsData: [], celestialDataLoaded: false,
+    moonMarkerEl: { style: {}, classList: { toggle() {} } }, planetMarkerEls: {}, PLANETS: {},
+    drawOverlayCanvas() {},
+  };
+  vm.createContext(context);
+  vm.runInContext(pageFunction("updateMosaicTiles") + "\n" + pageFunction("syncUI"), context);
+  return {
+    context, scene, tiles, element, render: () => context.syncUI(),
+    moonPixelDiameter: () => {
+      const xs = moon.outlines[0].map(([ra, dec]) => project(ra, dec)[0]);
+      return Math.max(...xs) - Math.min(...xs);
+    },
+    expectedWidthToMoonRatio: context.activeFov[0] / moon.diameter,
+  };
+}
+
+describe("camera FOV angular scale across viewport changes", () => {
+  it.each([[1200, 800], [800, 1200], [600, 400], [400, 600], [800, 800], [320, 740]])(
+    "keeps camera and mosaic footprints proportional to the sky at %i by %i", (width, height) => {
+      for (const mosaic of [false, true]) {
+        const view = framingScene([width, height], { mosaic, rotation: 30 });
+        view.render();
+        const box = mosaic ? view.tiles[0] : view.element("camera-fov-box");
+        const tileWidth = parseFloat(box.style.width), tileHeight = parseFloat(box.style.height);
+        const ratio = tileWidth / view.moonPixelDiameter();
+        // Small-field STG curvature and the sampled lunar limb account for less
+        // than 0.2%; the reported portrait defect loses tens of percent.
+        expect(Math.abs(ratio / view.expectedWidthToMoonRatio - 1)).toBeLessThan(0.002);
+        expect(tileWidth / tileHeight).toBeCloseTo(2, 10);
+        expect(box.style.transform).toContain("rotate(30deg)");
+        if (mosaic) {
+          const dx = parseFloat(view.tiles[1].style.left) - parseFloat(view.tiles[0].style.left);
+          const dy = parseFloat(view.tiles[1].style.top) - parseFloat(view.tiles[0].style.top);
+          expect(Math.hypot(dx, dy) / tileWidth).toBeCloseTo(0.9, 10);
+        }
+      }
+    }
+  );
+
+  it("preserves locked framing and saved dimensions through repeated resize and zoom", () => {
+    const view = framingScene([1000, 700], { locked: true });
+    const original = [...view.context.activeFov];
+    for (const [size, aperture] of [[[1000, 700], 6], [[350, 700], 6], [[350, 700], 3], [[1000, 700], 6]]) {
+      view.scene.size = size;
+      view.scene.aperture = aperture;
+      view.render();
+      expect(view.context.activeFov).toEqual(original);
+      expect(view.element("fov-overlay").style.left).toBe(size[0] / 2 + "px");
+      expect(view.element("fov-overlay").style.top).toBe(size[1] / 2 + "px");
+      const ratio = parseFloat(view.element("camera-fov-box").style.width) / view.moonPixelDiameter();
+      expect(Math.abs(ratio / view.expectedWidthToMoonRatio - 1)).toBeLessThan(0.002);
+    }
+  });
+});
+
 describe("solar-system angular framing", () => {
   // Public JPL Horizons observer tables: ICRF quantities 1,13,14,17,20,32.
   // Locations are London, Sydney and the equator/prime-meridian reference point.
@@ -105,19 +194,23 @@ describe("solar-system angular framing", () => {
 });
 
 describe("sky-chart angular-size compatibility", () => {
-  it("keeps drawing a partial lunar limb when the body is larger than the viewport", () => {
+  it.each([
+    { size: [1000, 1000], aperture: 0.01 },
+    { size: [25, 740], aperture: 0.001 },
+  ])("keeps a partial lunar limb visible at $aperture degrees with viewport $size", ({ size, aperture }) => {
     const body = api.calculate("Moon", date, location);
     let segments = 0;
+    const projectedScale = Math.max(...size) / aperture;
     const ctx = { save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() { segments++; }, stroke() {} };
     const context = {
       document: { getElementById: () => ({ getContext: () => ctx }) },
-      aladin: { getFov: () => [0.01, 0.01] }, PLANETS: {},
-      safeW2P: (ra, dec) => [(ra - body.outlines[0][0][0]) * 100000 + 500, (body.outlines[0][0][1] - dec) * 100000 + 500],
+      aladin: { getFov: () => [aperture, aperture * size[1] / size[0]] }, PLANETS: {},
+      safeW2P: (ra, dec) => [(ra - body.outlines[0][0][0]) * projectedScale + size[0] / 2, (body.outlines[0][0][1] - dec) * projectedScale + size[1] / 2],
       pixDist: (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]),
     };
     vm.createContext(context);
     vm.runInContext(pageFunction("drawAngularBodies"), context);
-    context.drawAngularBodies([body], [1000, 1000]);
+    context.drawAngularBodies([body], size);
     expect(segments).toBeGreaterThan(0);
   });
 
