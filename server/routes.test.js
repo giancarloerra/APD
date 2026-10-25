@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, it, expect, vi } from "vitest";
 import { createApiHarness } from "./test/apiHarness.js";
 import { PROVIDERS, METRICS } from "./services/forecastProviders.js";
+import vm from "node:vm";
 
 let app, cookie;
 const keyPath = "/api/weather/metservice/key";
@@ -19,6 +20,20 @@ beforeAll(async () => {
 afterAll(async () => { await app?.close(); });
 
 describe("real HTTP/auth and Redis-client route contracts", () => {
+  it("serves the installed browser ephemeris library while keeping the sky chart protected", async () => {
+    const response = await fetch(app.base + "/vendor/astronomy-engine.js");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toMatch(/javascript/);
+    const context = { Date };
+    vm.runInNewContext(await response.text(), context);
+    const observer = new context.Astronomy.Observer(51.5, -0.1, 25);
+    const moon = context.Astronomy.Equator("Moon", new Date("2026-10-25T00:00:00Z"), observer, false, false);
+    expect(moon.dist).toBeCloseTo(0.00246767627815, 6);
+    const page = await fetch(app.base + "/skychart.html", { redirect: "manual" });
+    expect(page.status).toBe(302);
+    expect(page.headers.get("location")).toBe("/login");
+  });
+
   it("keeps compact summaries public and protects the unchanged dashboard model and key controls", async () => {
     const legacy = await fetch(app.base + "/api/weather/summary");
     expect(legacy.status).toBe(200);

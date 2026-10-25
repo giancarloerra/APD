@@ -253,7 +253,7 @@ Open your browser and go to **http://localhost:3001** — APD is now running on 
 
 - **Interactive sky map** — Aladin Lite v3 with 17+ selectable surveys across **Optical** (DSS2, PanSTARRS, SDSS9, Mellinger, DECaPS, DESI Legacy), **H-Alpha** (VTSS, Fink, SHASSA), **Infrared** (2MASS, AllWISE, AKARI), **UV / X-Ray / Gamma** (GALEX UV, XMM, Fermi, ROSAT), and **Radio** (NVSS, GLEAM)
 - **Two modes** — *Framing* (camera overlay tools) and *Sky Chart* (pure sky exploration)
-- **Camera FOV overlay** — define sensor FOVs by width × height (degrees), saved to Redis; lock to any target
+- **Camera FOV overlay** — define sensor FOVs by width × height (degrees), saved to Redis; lock to any target. Frames and mosaic tiles retain their angular scale when resizing the view or changing screen orientation.
 - **Mosaic planner** — overlay a configurable N × M tile grid with adjustable overlap percentage
 - **Camera angle offset** — rotation slider for precise framing alignment
 - **Equatorial & Alt-Az mount support** — FOV box aligned to RA/Dec or horizon depending on mount type
@@ -261,6 +261,8 @@ Open your browser and go to **http://localhost:3001** — APD is now running on 
 - **Target search** — jump to any object by name (e.g. M 42, IC 434)
 - **Time travel** — step the sky forward/backward by hours, days, or months; reset to now
 - **Celestial overlays** — constellation lines, names, star dots, star names, Moon (with phase info), planets
+- **Moon and planet framing** — in **Objects Overlays**, keep **Markers (easy to see)** or select **True angular size (outlines)**. The Moon and enabled planets use distance-dependent angular dimensions for the selected observing time and shared location, including elevation. Outlines scale with map zoom and remain comparable with the camera FOV. Saturn includes the projected outer A-ring extent; planetary flattening and pole orientation are included. The display choice is saved with the existing sky-chart settings; older saved settings retain marker mode. No new API key is required.
+  - Positions use Astronomy Engine's approximate one-arcminute precision in the background surveys' J2000 frame, including observer parallax and light travel time. Angular dimensions use NASA/JPL reference radii. These are framing outlines, not surface imagery or precision telescope-pointing coordinates.
 - **Red night mode** — full-screen red overlay for preserving dark adaptation
 - **Horizon line** — with optional ground darkening and configurable opacity
 - **Alt-Az and equatorial grids** — toggleable with shared opacity slider
@@ -494,7 +496,7 @@ APD requires a few third-party accounts and some technical setup. If you need he
 - **Sky Dashboard**: Self-contained HTML page with Aladin Lite v3.6.5 sky viewer, jQuery 3.7.1 (Aladin dependency)
 - **Icons**: Lucide React
 - **Celestial data**: Star, constellation, and DSO data from [d3-celestial](https://github.com/ofrohn/d3-celestial) plus additional catalogs (SH2, LBN, vdB, HCG, Abell PNe) from [VizieR/CDS](https://vizier.cds.unistra.fr/) (bundled locally in `public/data/celestial/`)
-- **Astronomy calculations**: Simplified VSOP87/Meeus for planet positions, moon position and phase — approximate, optimised for visual display rather than astrometric precision
+- **Astronomy calculations**: Existing markers retain simplified VSOP87/Meeus positions and lunar phase. True-angular-size outlines use locally served [Astronomy Engine 2.1.19](https://github.com/cosinekitty/astronomy) for observer-aware J2000 positions and distances, with [JPL planetary radii](https://ssd.jpl.nasa.gov/planets/phys_par.html), [NASA polar radii](https://nssdc.gsfc.nasa.gov/planetary/factsheet/) and [Saturn ring dimensions](https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html). Calculations run in the browser without sending the observing location to another service.
 - **Sky Dashboard persistence**: UI settings (panel state, sliders, toggles) stored in `localStorage` (`astro-sky-dashboard-v1`); FOVs and favorites stored in Redis via the API
 
 ### Backend
@@ -882,6 +884,7 @@ APD includes or links to the following third-party components, each under its ow
 | Component | License | Notes |
 |-----------|---------|-------|
 | [Aladin Lite v3](https://github.com/cds-astro/aladin-lite) | GPL-3.0 | Loaded from CDS servers; compatible with AGPL-3.0 per §13 of both licenses |
+| [Astronomy Engine](https://github.com/cosinekitty/astronomy) | MIT | Installed through npm and served locally for true-angular-size solar-system framing; its browser distribution retains the upstream license notice |
 | [d3-celestial](https://github.com/ofrohn/d3-celestial) data files | BSD-3-Clause | Star, constellation, and DSO catalog data bundled in `public/data/celestial/` |
 | VizieR/CDS extra catalogs | Public astronomical data | SH2 (Sharpless 1959), LBN (Lynds 1965), B (Barnard 1927), LDN (Lynds 1962), vdB (van den Bergh 1966), HCG (Hickson 1993), Abell PNe (Acker+ 1992) — sourced from [VizieR, CDS Strasbourg](https://vizier.cds.unistra.fr/) and bundled in `public/data/celestial/catalogs_extra.json` |
 | [Lucide](https://lucide.dev/) icons | ISC | Icon library used in the React frontend |
