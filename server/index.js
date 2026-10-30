@@ -13,6 +13,7 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { weatherService, bindHelpers } from "./services/weatherService.js";
 import { ProviderError } from "./services/forecastProviders.js";
+import { createSkySurveyService, parseSkyProperties, SkyServiceError } from "./services/skySurveyService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -264,6 +265,9 @@ app.get("/login", (req, res) => {
 app.get("/vendor/astronomy-engine.js", (_req, res) => {
   res.sendFile(path.join(__dirname, "../node_modules/astronomy-engine/astronomy.browser.min.js"));
 });
+app.get("/vendor/aladin.js", (_req, res) => {
+  res.sendFile(path.join(__dirname, "../node_modules/aladin-lite/dist/aladin.js"));
+});
 
 const distPath = path.join(__dirname, "../dist");
 if (fs.existsSync(distPath)) {
@@ -360,6 +364,40 @@ app.post("/api/weather/refresh/trigger", ...triggerHandler);
 
 // ===== PROTECTED ROUTES — everything below requires auth =====
 app.use("/api/*", requireTrustedOrigin, requireAuth);
+
+const skySurveys = createSkySurveyService();
+async function readSkyService(req, res, read) {
+  const controller = new AbortController();
+  const cancel = () => { if (!res.writableEnded) controller.abort(); };
+  res.once("close", cancel);
+  try {
+    await read(controller.signal);
+  } catch (error) {
+    if (controller.signal.aborted) return;
+    const known = error instanceof SkyServiceError;
+    res.status(known ? error.status : 503).json({
+      error: known ? error.message : "Sky service request failed",
+      code: known ? error.code : "sky_service_error",
+      attempts: known ? error.attempts : [],
+    });
+  } finally {
+    res.off("close", cancel);
+  }
+}
+app.get("/api/skychart/surveys/:key/status", (req, res) => readSkyService(req, res, async () => {
+  res.json(skySurveys.status(req.params.key));
+}));
+app.get("/api/skychart/surveys/:key/metadata", (req, res) => readSkyService(req, res, async signal => {
+  const result = await skySurveys.resource(req.params.key, "properties", signal);
+  res.json({ properties: parseSkyProperties(result.body.toString("utf8")), mirror: result.mirror, attempts: result.attempts });
+}));
+app.get("/api/skychart/surveys/:key/*", (req, res) => readSkyService(req, res, async signal => {
+  const result = await skySurveys.resource(req.params.key, req.params[0], signal);
+  res.set("X-APD-Survey-Mirror", result.mirror).type(result.contentType).send(result.body);
+}));
+app.get("/api/skychart/resolve", (req, res) => readSkyService(req, res, async signal => {
+  res.json(await skySurveys.resolve(req.query.name, signal));
+}));
 
 // Protect skychart.html page access
 app.get("/skychart.html", requireAuth, (req, res, next) => {

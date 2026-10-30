@@ -1,0 +1,257 @@
+[
+  {
+    "key": "dss-color",
+    "id": "P/DSS2/color",
+    "name": "DSS2 Color",
+    "creatorId": "ivo://CDS/P/DSS2/color",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/DSS/DSSColor",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/DSS2/color",
+      "https://casda.csiro.au/hips/DSS2/color",
+      "https://skies.esac.esa.int/DSSColor",
+      "https://hips.china-vo.org/m/CDS_P_DSS2_color",
+      "https://stpubdata.s3.us-east-1.amazonaws.com/mast/skybackgrounds/DSSColor",
+      "https://alaskybis.cds.unistra.fr/DSS/DSSColor",
+      "https://healpix.ias.u-psud.fr/CDS_P_DSS2_color"
+    ],
+    "renderOptions": {
+      "imgFormat": "jpeg"
+    }
+  },
+  {
+    "key": "dss-red",
+    "id": "P/DSS2/red",
+    "name": "DSS2 Red",
+    "creatorId": "ivo://CDS/P/DSS2/red",
+    "mirrors": [
+      "https://alaskybis.cds.unistra.fr/DSS/DSS2Merged",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/DSS2/red",
+      "https://hips.china-vo.org/m/DSS2Merged",
+      "https://alasky.cds.unistra.fr/DSS/DSS2Merged"
+    ],
+    "renderOptions": {
+      "imgFormat": "fits",
+      "numBitsPerPixel": 16,
+      "minCut": 1000,
+      "maxCut": 10000,
+      "colormap": "magma",
+      "stretch": "Linear"
+    }
+  },
+  {
+    "key": "panstarrs",
+    "id": "P/PanSTARRS/DR1/color-z-zg-g",
+    "name": "PanSTARRS DR1",
+    "creatorId": "ivo://CDS/P/PanSTARRS/DR1/color-z-zg-g",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/Pan-STARRS/DR1/color-z-zg-g",
+      "https://alaskybis.cds.unistra.fr/Pan-STARRS/DR1/color-z-zg-g"
+    ],
+    "renderOptions": {
+      "imgFormat": "jpeg"
+    }
+  },
+  {
+    "key": "sdss",
+    "id": "P/SDSS9/color",
+    "name": "SDSS9 Color",
+    "creatorId": "ivo://CDS/P/SDSS9/color",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/SDSS/DR9/color",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/SDSS/DR9/color",
+      "https://skies.esac.esa.int/SDSS9Color",
+      "https://hips.china-vo.org/m/CDS_P_SDSS9_color"
+    ],
+    "renderOptions": {
+      "imgFormat": "jpeg"
+    }
+  },
+  {
+    "key": "mellinger",
+    "id": "P/Mellinger/color",
+    "name": "Mellinger Color (wide-field)",
+    "creatorId": "ivo://CDS/P/Mellinger/color",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/MellingerRGB",
+      "https://alaskybis.cds.unistra.fr/MellingerRGB"
+    ],
+    "renderOptions": {
+      "imgFormat": "jpeg"
+    }
+  },
+  {
+    "key": "decaps",
+    "id": "P/DECaPS/DR2/color",
+    "name": "DECaPS DR2 Color",
+    "creatorId": "ivo://CDS/P/DECaPS/DR2/color",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/DECaPS/DR2/CDS_P_DECaPS_DR2_color",
+      "https://alaskybis.cds.unistra.fr/DECaPS/DR2/CDS_P_DECaPS_DR2_color"
+    ],
+    "renderOptions": {
+      "imgFormat": "png"
+    }
+  },
+  {
+    "key": "desi",
+    "id": "P/DESI-Legacy-Surveys/DR10/color",
+    "name": "DESI Legacy DR10",
+    "creatorId": "ivo://CDS/P/DESI-Legacy-Surveys/DR10/color",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/DESI-legacy-surveys/DR10/CDS_P_DESI-Legacy-Surveys_DR10_color",
+      "https://alaskybis.cds.unistra.fr/DESI-legacy-surveys/DR10/CDS_P_DESI-Legacy-Surveys_DR10_color"
+    ]
+  },
+  {
+    "key": "vtss",
+    "id": "P/VTSS/Ha",
+    "name": "VTSS H-alpha",
+    "creatorId": "ivo://CDS/P/VTSS/Ha",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/VTSS/Ha",
+      "https://skies.esac.esa.int/VTSSHa"
+    ],
+    "renderOptions": {
+      "minCut": -10,
+      "maxCut": 100,
+      "colormap": "grayscale",
+      "imgFormat": "fits"
+    }
+  },
+  {
+    "key": "fink",
+    "id": "P/Fink/Halpha",
+    "name": "Fink H-alpha",
+    "creatorId": "ivo://CDS/P/Finkbeiner",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/FinkbeinerHalpha",
+      "https://alaskybis.cds.unistra.fr/FinkbeinerHalpha",
+      "https://skies.esac.esa.int/FinkbeinerHa"
+    ],
+    "renderOptions": {
+      "minCut": -10,
+      "maxCut": 800,
+      "colormap": "rdbu",
+      "imgFormat": "fits"
+    }
+  },
+  {
+    "key": "shassa",
+    "id": "P/SHASSA/H",
+    "name": "SHASSA H-alpha",
+    "creatorId": "ivo://CDS/P/SHASSA/H",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/SHASSA-H3",
+      "https://alaskybis.cds.unistra.fr/SHASSA-H3"
+    ]
+  },
+  {
+    "key": "2mass",
+    "id": "P/2MASS/color",
+    "name": "2MASS Color",
+    "creatorId": "ivo://CDS/P/2MASS/color",
+    "mirrors": [
+      "https://alaskybis.cds.unistra.fr/2MASS/Color",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/Color",
+      "https://casda.csiro.au/hips/2MASS/Color",
+      "https://skies.esac.esa.int/2MASSColor",
+      "https://hips.china-vo.org/m/CDS_P_2MASS_color"
+    ],
+    "renderOptions": {
+      "imgFormat": "jpeg"
+    }
+  },
+  {
+    "key": "allwise",
+    "id": "P/allWISE/color",
+    "name": "AllWISE Color",
+    "creatorId": "ivo://CDS/P/allWISE/color",
+    "mirrors": [
+      "https://alaskybis.cds.unistra.fr/AllWISE/RGB-W4-W2-W1",
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/AllWISE/RGB-W4-W2-W1",
+      "https://skies.esac.esa.int/AllWISEColor",
+      "https://hips.china-vo.org/m/CDS_P_allWISE_color"
+    ],
+    "renderOptions": {
+      "imgFormat": "jpeg"
+    }
+  },
+  {
+    "key": "akari",
+    "id": "P/AKARI/FIS/Color",
+    "name": "AKARI Far-IR",
+    "creatorId": "ivo://CDS/P/AKARI/FIS/Color",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/AKARI-FIS/ColorLSN60",
+      "https://alaskybis.cds.unistra.fr/AKARI-FIS/ColorLSN60",
+      "https://healpix.ias.u-psud.fr/CDS_P_AKARI_FIS_Color"
+    ]
+  },
+  {
+    "key": "galex",
+    "id": "P/GALEXGR6/AIS/color",
+    "name": "GALEX UV",
+    "creatorId": "ivo://CDS/P/GALEXGR6/AIS/color",
+    "mirrors": [
+      "https://irsa.ipac.caltech.edu/data/hips/CDS/GALEX/GR6-03-2014/AIS-Color",
+      "https://hips.china-vo.org/m/CDS_P_GALEXGR6_AIS_color"
+    ]
+  },
+  {
+    "key": "xmm",
+    "id": "P/XMM/PN/color",
+    "name": "XMM-Newton X-ray",
+    "creatorId": "ivo://xcatdb/P/XMM/PN/color",
+    "mirrors": [
+      "https://xcatdb.unistra.fr/PNColor",
+      "https://alasky.cds.unistra.fr/SSC/xcatdb_P_XMM_PN_color",
+      "https://alaskybis.cds.unistra.fr/SSC/xcatdb_P_XMM_PN_color"
+    ]
+  },
+  {
+    "key": "fermi",
+    "id": "P/Fermi/color",
+    "name": "Fermi Gamma-ray",
+    "creatorId": "ivo://CDS/P/Fermi/color",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/Fermi/Color",
+      "https://skies.esac.esa.int/FermiColor"
+    ],
+    "renderOptions": {
+      "imgFormat": "jpeg"
+    }
+  },
+  {
+    "key": "rosat",
+    "id": "P/ROSAT/intensity",
+    "name": "ROSAT X-ray (RASS)",
+    "creatorId": "ivo://ov-gso/P/RASS",
+    "mirrors": [
+      "https://cade.irap.omp.eu/documents/Ancillary/4Aladin/RASS",
+      "https://alasky.cds.unistra.fr/IRAP/ov-gso_P_RASS",
+      "https://alaskybis.cds.unistra.fr/IRAP/ov-gso_P_RASS"
+    ]
+  },
+  {
+    "key": "nvss",
+    "id": "P/NVSS/intensity",
+    "name": "NVSS 1.4 GHz",
+    "creatorId": "ivo://CDS/P/NVSS",
+    "mirrors": [
+      "https://alasky.cds.unistra.fr/NVSS/intensity",
+      "https://alaskybis.cds.unistra.fr/NVSS/intensity",
+      "https://casda.csiro.au/hips/NVSS",
+      "https://skies.esac.esa.int/NVSS",
+      "https://hips.china-vo.org/m/CDS_P_NVSS"
+    ]
+  },
+  {
+    "key": "gleam",
+    "id": "P/GLEAM/170-231",
+    "name": "GLEAM 170-231 MHz",
+    "creatorId": "ivo://ov-gso/P/GLEAM/170-231",
+    "mirrors": [
+      "https://cade.irap.omp.eu/documents/Ancillary/4Aladin/GLEAM_170_231"
+    ]
+  }
+]
