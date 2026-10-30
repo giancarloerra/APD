@@ -14,6 +14,10 @@ const config: UserConfig & { test: InlineConfig } = {
   },
   server: {
     proxy: {
+      "/vendor/aladin.js": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
       "/vendor/astronomy-engine.js": {
         target: "http://localhost:3001",
         changeOrigin: true,

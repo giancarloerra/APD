@@ -21,7 +21,8 @@ const WEATHER_FEATURES = [
 ];
 
 const SKY_FEATURES = [
-  "Interactive sky map powered by Aladin Lite v3",
+  "Interactive sky map powered by locally served Aladin Lite 3.6.5",
+  "Automatic retries across the selected survey's registered mirrors; bundled star chart and framing remain usable if every image host fails",
   "17+ sky survey layers: DSS2, PanSTARRS, 2MASS, AllWISE, GALEX UV, XMM X-ray, Fermi gamma-ray, NVSS radio, and more",
   "Framing mode and Sky Chart mode",
   "Camera FOV overlay — define sensor width × height in degrees",
@@ -30,8 +31,9 @@ const SKY_FEATURES = [
   "Camera rotation / angle offset slider",
   "Equatorial and Alt-Az mount support",
   "Saved FOV presets and favorite targets — synced to Redis",
+  "Native favourite Night/Season cards: altitude graphs, monthly dark-hour averages and visibility filters without Telescopius calls",
   "Import targets from Telescopius observing lists into Favorites",
-  "Target search by name (e.g. M 42, IC 434, Andromeda…)",
+  "Target search through CDS and Harvard Sesame, direct Harvard SIMBAD, STScI SANTA, NASA HEASARC and the bundled catalogue; failed searches leave the view and FOV unchanged",
   "Time travel — step sky forward/backward by ±h / ±d / ±month",
   "Constellation lines, names, star dots, star name labels",
   "Moon marker with phase info, planet positions",

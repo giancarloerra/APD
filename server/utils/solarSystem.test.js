@@ -219,8 +219,10 @@ describe("sky-chart angular-size compatibility", () => {
     let stored = JSON.stringify(old);
     const elements = new Map();
     const warnings = [];
+    const favoriteSelects = { "fav-view": ["night", "season"], "fav-min-alt": ["0", "20", "30", "40", "50", "60"], "fav-min-hours": ["0", "1", "2", "3", "4", "5", "6"] };
+    const favoriteDefaults = { "fav-view": "night", "fav-min-alt": "30", "fav-min-hours": "0" };
     const element = id => {
-      if (!elements.has(id)) elements.set(id, { value: id === "solar-system-size" ? "markers" : "", checked: false, style: {}, classList: { contains: () => false, toggle() {}, add() {} } });
+      if (!elements.has(id)) elements.set(id, { value: favoriteDefaults[id] ?? (id === "solar-system-size" ? "markers" : ""), options: (favoriteSelects[id] || []).map(value => ({ value })), checked: false, style: {}, classList: { contains: () => false, toggle() {}, add() {} } });
       return elements.get(id);
     };
     const context = {
@@ -243,12 +245,22 @@ describe("sky-chart angular-size compatibility", () => {
     expect(context.obsLat).toBe(0);
     expect(context.obsLon).toBe(0);
     expect(context.horizonEnabled).toBe(true);
+    expect(element("fav-view").value).toBe("night");
+    expect(element("fav-min-alt").value).toBe("30");
+    expect(element("fav-min-hours").value).toBe("0");
     element("solar-system-size").value = "angular";
+    element("fav-view").value = "season";
+    element("fav-min-alt").value = "40";
+    element("fav-min-hours").value = "2";
     context.saveSettings();
-    expect(JSON.parse(stored)).toMatchObject({ solarSystemSize: "angular", chkMoon: true, chkPlanets: true, activeFovId: 17, rotation: "18", lat: "0", lon: "0", viewFov: 1.2 });
+    expect(JSON.parse(stored)).toMatchObject({ solarSystemSize: "angular", chkMoon: true, chkPlanets: true, activeFovId: 17, rotation: "18", lat: "0", lon: "0", viewFov: 1.2, favoriteView: "season", favoriteMinAlt: "40", favoriteMinHours: "2" });
     element("solar-system-size").value = "markers";
+    element("fav-view").value = "night";
     context.loadAndApplySettings();
     expect(element("solar-system-size").value).toBe("angular");
+    expect(element("fav-view").value).toBe("season");
+    expect(element("fav-min-alt").value).toBe("40");
+    expect(element("fav-min-hours").value).toBe("2");
     expect(warnings).toEqual([]);
   });
 

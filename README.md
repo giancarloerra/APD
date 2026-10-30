@@ -54,22 +54,28 @@ If you want to see what I actually point all this planning at, my astrophotograp
 
 ## 📸 Screenshots
 
+Weather examples use illustrative forecasts. New sky-chart examples use public catalogue targets, generic camera profiles and an example observing location.
+
 <table>
   <tr>
     <td align="center"><img src="screenshots/screenshot_home.png" alt="Home / Landing Page" /><br/><sub>Home / Landing Page</sub></td>
-    <td align="center"><img src="screenshots/screenshot_weather1.png" alt="Weather Dashboard" /><br/><sub>Weather Dashboard (weekly heatmap)</sub></td>
+    <td align="center"><img src="screenshots/screenshot_weather_matrix.jpg" alt="Weekly cloud-cover matrix with the all-source average selected" /><br/><sub>Weekly forecast matrix (all-source average)</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="screenshots/screenshot_weather2.png" alt="Weather Dashboard" /><br/><sub>Weather Dashboard (hourly details)</sub></td>
-    <td align="center"><img src="screenshots/screenshot_weather3.png" alt="Solar Forecast" /><br/><sub>Solar Forecast</sub></td>
+    <td align="center"><img src="screenshots/screenshot_weather_providers.jpg" alt="Night forecast average and all nine provider rows" /><br/><sub>Night forecasts (average and individual providers)</sub></td>
+    <td align="center"><img src="screenshots/screenshot_weather_hourly.jpg" alt="Expanded hourly forecast with the GFS source selected" /><br/><sub>Hourly forecast details</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="screenshots/screenshot_weather_solar.jpg" alt="Daytime forecast averages, provider rows and solar images" /><br/><sub>Solar forecasts and imagery</sub></td>
+    <td align="center"><img src="screenshots/screenshot_angular_moon.jpg" alt="True-size Moon outline near the Pleiades with an example camera frame" /><br/><sub>Moon at true angular size</sub></td>
   </tr>
   <tr>
    <td align="center"><img src="screenshots/screenshot_sky1.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard</sub></td>
    <td align="center"><img src="screenshots/screenshot_sky2.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (camera FOV & mount type)</sub></td>
   </tr>
   <tr>
-   <td align="center"><img src="screenshots/screenshot_sky3.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (favourites & objects options)</sub></td>
-   <td align="center"><img src="screenshots/screenshot_sky4.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (Aladin sky DSS and Surveys options)</sub></td>
+   <td align="center"><img src="screenshots/screenshot_favourites_night.jpg" alt="Favourite targets with night altitude curves and visibility filters" /><br/><sub>Favourite targets (Night)</sub></td>
+   <td align="center"><img src="screenshots/screenshot_survey_recovery.jpg" alt="DSS2 imagery from a working mirror with connection details below the credits" /><br/><sub>Survey mirror recovery and sidebar status</sub></td>
   </tr>
   <tr>
    <td align="center"><img src="screenshots/screenshot_sky5.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (Telescopius integration: best objects, searching & lists)</sub></td>
@@ -78,6 +84,17 @@ If you want to see what I actually point all this planning at, my astrophotograp
   <tr>
    <td align="center"><img src="screenshots/screenshot_sky7.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (All the supported DSO catalogues)</sub></td>
    <td align="center"><img src="screenshots/screenshot_sky8.png" alt="Sky Dashboard" /><br/><sub>Sky Dashboard (Natural visual colours survey)</sub></td>
+  </tr>
+  <tr>
+   <td align="center"><img src="screenshots/screenshot_favourites_season.jpg" alt="Twelve calendar-month visibility bars for favourite targets" /><br/><sub>Favourite targets (Season)</sub></td>
+   <td align="center"><img src="screenshots/screenshot_angular_saturn.jpg" alt="Saturn disk and projected ring outlines at the selected time" /><br/><sub>True-size planet disks and Saturn rings</sub></td>
+  </tr>
+  <tr>
+   <td align="center"><img src="screenshots/screenshot_fov_phone.jpg" alt="Camera frame and Moon outline on a narrow portrait screen" /><br/><sub>FOV scale on a narrow screen</sub></td>
+   <td align="center"><img src="screenshots/screenshot_search_progress.jpg" alt="Go button spinning while an NGC 6820 lookup is pending" /><br/><sub>Visible Search progress</sub></td>
+  </tr>
+  <tr>
+   <td align="center" colspan="2"><img src="screenshots/screenshot_local_chart.jpg" alt="Bundled Orion stars and framing with photograph requests deliberately unavailable" /><br/><sub>Local chart during an illustrative photograph outage</sub></td>
   </tr>
 </table>
 
@@ -251,14 +268,15 @@ Open your browser and go to **http://localhost:3001** — APD is now running on 
 
 ### 🔭 Sky Dashboard
 
-- **Interactive sky map** — Aladin Lite v3 with 17+ selectable surveys across **Optical** (DSS2, PanSTARRS, SDSS9, Mellinger, DECaPS, DESI Legacy), **H-Alpha** (VTSS, Fink, SHASSA), **Infrared** (2MASS, AllWISE, AKARI), **UV / X-Ray / Gamma** (GALEX UV, XMM, Fermi, ROSAT), and **Radio** (NVSS, GLEAM)
-- **Two modes** — *Framing* (camera overlay tools) and *Sky Chart* (pure sky exploration)
+- **Interactive sky map**: locally served Aladin Lite 3.6.5 with 19 selectable surveys across **Optical** (DSS2, PanSTARRS, SDSS9, Mellinger, DECaPS, DESI Legacy), **H-Alpha** (VTSS, Fink, SHASSA), **Infrared** (2MASS, AllWISE, AKARI), **UV / X-Ray / Gamma** (GALEX UV, XMM, Fermi, ROSAT All-Sky Survey), and **Radio** (NVSS, GLEAM)
+- **Survey outages**: metadata and image requests try the selected dataset's registered mirrors, including independent hosts where that dataset is published. If every mirror fails, the chart displays bundled stars and constellation lines while retaining framing, other overlays and time controls. Connection status, details and **Retry sky photographs** appear at the bottom of the Sky Dashboard side menu, after the credits; the button retries immediately. The selected survey and saved overlay choices are preserved. This still requires the APD server and Redis; remote sky photographs cannot be displayed when all their hosts are unavailable. No additional API key is required.
+- **Horizon & Grid**: enable the geometric horizon and coordinate-grid overlays independently of the camera framing tools.
 - **Camera FOV overlay** — define sensor FOVs by width × height (degrees), saved to Redis; lock to any target. Frames and mosaic tiles retain their angular scale when resizing the view or changing screen orientation.
 - **Mosaic planner** — overlay a configurable N × M tile grid with adjustable overlap percentage
 - **Camera angle offset** — rotation slider for precise framing alignment
 - **Equatorial & Alt-Az mount support** — FOV box aligned to RA/Dec or horizon depending on mount type
-- **Favorite targets** — save and recall objects, synced to Redis; import directly from Telescopius lists
-- **Target search** — jump to any object by name (e.g. M 42, IC 434)
+- **Favorite targets**: save and recall framing, synced to Redis; import directly from Telescopius lists. Night and Season views reuse Discover-style cards and graphs, with minimum altitude and useful-dark-hour filters. Ranking uses dark hours above the selected altitude, then peak altitude. Season bars show the average over every date in each calendar month, including dates without astronomical darkness, on a fixed 0–24 h/night scale. The selected chart date determines the night or ranked month; displayed times use the browser timezone. Observing days run from mean solar noon at the saved longitude to the following noon, with astronomical darkness defined as Sun below −18°. These are local visibility calculations, independent of Telescopius and weather, and require no API key or allowance. Existing saved zoom, rotation and mosaics are retained when a favourite is opened. The view and filters are remembered in the existing browser settings.
+- **Target search**: resolve names through CDS Sesame, Harvard Sesame, direct Harvard SIMBAD, STScI SANTA and NASA HEASARC, then the bundled catalogue for names it contains. The **Go** button spins while a lookup is pending and stops on success, failure or cancellation. SANTA caching is disabled; HEASARC uses its documented resolver service. Existing Sesame requests retain their six-second timeout; the additional routes allow 25 seconds per request, including SANTA's documented 20-second server limit. Changing target cancels an unfinished lookup. Numeric coordinates and saved favourites work directly. A failed name search displays the cause and leaves the sky position and FOV lock unchanged; successful Search locks the FOV at the resolved target.
 - **Time travel** — step the sky forward/backward by hours, days, or months; reset to now
 - **Celestial overlays** — constellation lines, names, star dots, star names, Moon (with phase info), planets
 - **Moon and planet framing** — in **Objects Overlays**, keep **Markers (easy to see)** or select **True angular size (outlines)**. The Moon and enabled planets use distance-dependent angular dimensions for the selected observing time and shared location, including elevation. Outlines scale with map zoom and remain comparable with the camera FOV. Saturn includes the projected outer A-ring extent; planetary flattening and pole orientation are included. The display choice is saved with the existing sky-chart settings; older saved settings retain marker mode. No new API key is required.
@@ -493,7 +511,7 @@ APD requires a few third-party accounts and some technical setup. If you need he
 ### Frontend
 
 - **Weather Dashboard**: React 18 + TypeScript + Tailwind CSS (Vite build)
-- **Sky Dashboard**: Self-contained HTML page with Aladin Lite v3.6.5 sky viewer, jQuery 3.7.1 (Aladin dependency)
+- **Sky Dashboard**: Self-contained HTML page with the pinned Aladin Lite 3.6.5 npm module and its embedded WebAssembly, served from the APD server. Same-origin survey requests use a fixed registry in `public/data/sky-surveys.json`; `server/services/skySurveyService.js` handles mirror retries and name resolution.
 - **Icons**: Lucide React
 - **Celestial data**: Star, constellation, and DSO data from [d3-celestial](https://github.com/ofrohn/d3-celestial) plus additional catalogs (SH2, LBN, vdB, HCG, Abell PNe) from [VizieR/CDS](https://vizier.cds.unistra.fr/) (bundled locally in `public/data/celestial/`)
 - **Astronomy calculations**: Existing markers retain simplified VSOP87/Meeus positions and lunar phase. True-angular-size outlines use locally served [Astronomy Engine 2.1.19](https://github.com/cosinekitty/astronomy) for observer-aware J2000 positions and distances, with [JPL planetary radii](https://ssd.jpl.nasa.gov/planets/phys_par.html), [NASA polar radii](https://nssdc.gsfc.nasa.gov/planetary/factsheet/) and [Saturn ring dimensions](https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html). Calculations run in the browser without sending the observing location to another service.
@@ -781,6 +799,10 @@ Unavailable provider lists are `null`; a provider with no night samples in the f
 | `PUT` | `/api/skychart/fovs` | Yes | Save FOV list |
 | `GET` | `/api/skychart/favorites` | Yes | Get saved favorites |
 | `PUT` | `/api/skychart/favorites` | Yes | Save favorites |
+| `GET` | `/api/skychart/surveys/:key/metadata` | Yes | Validate the selected survey's metadata through its registered mirrors |
+| `GET` | `/api/skychart/surveys/:key/status` | Yes | Current survey connection state and failed mirror attempts |
+| `GET` | `/api/skychart/surveys/:key/*` | Yes | Proxy permitted HiPS metadata, footprint and image paths for the selected dataset |
+| `GET` | `/api/skychart/resolve?name=M42` | Yes | Resolve a name through Sesame, direct SIMBAD, SANTA and HEASARC; bundled catalogue lookup runs in the chart |
 
 Telescopius proxy routes are rate-limited to 30 requests/minute.
 
@@ -794,6 +816,7 @@ apd/
 │   ├── index.js                    # Express server, auth, routes, Redis
 │   ├── services/
 │   │   ├── forecastProviders.js    # Provider HTTP requests and normalization
+│   │   ├── skySurveyService.js     # Fixed survey mirrors and name resolution
 │   │   └── weatherService.js       # Independent provider refresh and Redis caching
 │   └── utils/
 │       ├── forecastProcessor.js    # Complete v2 forecast sessions and aggregation
@@ -824,6 +847,8 @@ apd/
 │       └── metOfficeUtils.ts       # Met Office data processing & scoring
 ├── public/
 │   ├── skychart.html               # Sky dashboard (self-contained, Aladin Lite)
+│   ├── sky-services.js             # Survey status and Search recovery
+│   ├── data/sky-surveys.json       # Dataset IDs, published mirrors and display options
 │   ├── settings.html               # Settings page (location, API keys, system status)
 │   ├── theme.css                   # Shared CSS theme (accent colour tokens)
 │   ├── logo.png                    # App logo / favicon
@@ -883,7 +908,7 @@ APD includes or links to the following third-party components, each under its ow
 
 | Component | License | Notes |
 |-----------|---------|-------|
-| [Aladin Lite v3](https://github.com/cds-astro/aladin-lite) | GPL-3.0 | Loaded from CDS servers; compatible with AGPL-3.0 per §13 of both licenses |
+| [Aladin Lite 3.6.5](https://github.com/cds-astro/aladin-lite/tree/fbdc7e2e7619489ab9accc65b5579bb0273e7847) | GPL-3.0 | Installed through npm and served locally, including embedded WebAssembly. The upstream licence is retained in `public/vendor/aladin-LICENSE.txt`; compatible with AGPL-3.0 per §13 of both licenses |
 | [Astronomy Engine](https://github.com/cosinekitty/astronomy) | MIT | Installed through npm and served locally for true-angular-size solar-system framing; its browser distribution retains the upstream license notice |
 | [d3-celestial](https://github.com/ofrohn/d3-celestial) data files | BSD-3-Clause | Star, constellation, and DSO catalog data bundled in `public/data/celestial/` |
 | VizieR/CDS extra catalogs | Public astronomical data | SH2 (Sharpless 1959), LBN (Lynds 1965), B (Barnard 1927), LDN (Lynds 1962), vdB (van den Bergh 1966), HCG (Hickson 1993), Abell PNe (Acker+ 1992) — sourced from [VizieR, CDS Strasbourg](https://vizier.cds.unistra.fr/) and bundled in `public/data/celestial/catalogs_extra.json` |
@@ -891,4 +916,4 @@ APD includes or links to the following third-party components, each under its ow
 | [Google Fonts — Inter](https://fonts.google.com/specimen/Inter) | SIL Open Font License 1.1 | Loaded from Google Fonts CDN |
 | SDO/HMI solar imagery | Public domain | Hotlinked from [Stanford JSOC](https://jsoc1.stanford.edu); NASA/SDO data is in the public domain |
 
-All npm dependencies (React, Express, Tailwind CSS, etc.) are licensed under MIT or ISC — see each package's own LICENSE file for details.
+Other npm dependencies include MIT and ISC components; see each package's own LICENSE file for details.

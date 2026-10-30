@@ -7,12 +7,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/3.6.5/aladin.js" charset="utf-8"></script>
+    <script>
+        const aladinReady = import('/vendor/aladin.js').then(({ default: engine }) => {
+            window.A = engine;
+            return engine.init;
+        });
+    </script>
     <script src="/vendor/astronomy-engine.js"></script>
     <script src="/solar-system.js"></script>
+    <script src="/sky-services.js"></script>
     <link rel="stylesheet" href="/theme.css">
     <style>
         @keyframes starPulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.7); } }
+        @keyframes skySearchSpin { to { transform: rotate(360deg); } }
+        #search-btn[aria-busy="true"]::before {
+            content: ''; display: inline-block; width: 12px; height: 12px; box-sizing: border-box;
+            border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+            margin-right: 6px; vertical-align: -2px; animation: skySearchSpin 0.7s linear infinite;
+        }
         .nav-buttons a { background: rgba(var(--accent-rgb),0.08) !important; }
         .nav-buttons a:hover { background: rgba(var(--accent-rgb),0.18) !important; }
         body, html {
@@ -133,6 +145,14 @@
             padding: 8px 12px; background: #450a0a; color: #fecaca; font-size: 0.8rem;
             border: 1px solid #ef4444; border-radius: 4px; pointer-events: none;
         }
+        #sky-service-status {
+            margin-top: 8px; padding: 7px 10px; background: rgba(20,20,20,0.94);
+            color: #fcd34d; border: 1px solid #854d0e; border-radius: 4px;
+            font-size: 0.72rem; line-height: 1.45; overflow-wrap: anywhere;
+        }
+        #sky-service-status button { margin-top: 4px; background: #333; color: #eee; border: 1px solid #555; border-radius: 3px; cursor: pointer; }
+        #sky-service-status details { margin-top: 4px; overflow-wrap: anywhere; }
+        #sky-service-status summary { cursor: pointer; }
 
         /* Red night mode overlay */
         #night-mode-overlay {
@@ -457,6 +477,14 @@
         .discover-card .dc-curve-meta {
             font-size: 0.65rem; color: #aaa; margin-top: 2px; font-family: 'Courier New', monospace;
         }
+        #fav-list .discover-card { align-items: flex-start; padding: 6px 8px; }
+        #fav-list .discover-card:hover { background: rgba(255,255,255,0.06); }
+        #fav-list .dc-actions { flex-direction: column; }
+        #fav-list .item-del-btn { color: #ff4444; }
+        #fav-list .dc-season { display: block; width: 100%; height: 52px; margin-top: 4px; }
+        #fav-visibility-status { font-size: 0.7rem; color: #999; line-height: 1.5; margin-bottom: 6px; }
+        #sp-favorites .vis-filter-bar label { margin: 0; display: inline-flex; align-items: center; gap: 4px; }
+        #sp-favorites .vis-filter-bar select { width: auto; margin: 0; }
         /* Visibility filter bar */
         .vis-filter-bar {
             display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center;
@@ -503,7 +531,6 @@
         <canvas id="darken-canvas"></canvas>
         <div id="labels-container"></div>
         <div id="solar-size-error" role="alert" hidden></div>
-
         <div id="night-mode-overlay"></div>
         <div id="fov-overlay">
             <div id="camera-fov-box">
@@ -584,7 +611,7 @@
             <div class="control-group">
                 <div class="flex-row">
                     <input type="text" id="search-input" placeholder="e.g. M 42, IC 434" style="flex: 0.7;">
-                    <button class="action-btn" id="search-btn" style="flex: 0.3;">Go</button>
+                    <button class="action-btn" id="search-btn" aria-busy="false" style="flex: 0.3;">Go</button>
                 </div>
             </div>
 
@@ -653,7 +680,22 @@
                     </div>
                     <div class="sub-panel-body">
                         <div class="control-group">
-                            <ul class="fav-list" id="fav-list"></ul>
+                            <div class="vis-filter-bar">
+                                <label for="fav-view">View
+                                <select id="fav-view"><option value="night">Night</option><option value="season">Season</option></select></label>
+                                <label for="fav-min-alt">Alt ≥
+                                <select id="fav-min-alt">
+                                    <option value="0">0°</option><option value="20">20°</option><option value="30" selected>30°</option>
+                                    <option value="40">40°</option><option value="50">50°</option><option value="60">60°</option>
+                                </select></label>
+                                <label for="fav-min-hours">Hours ≥
+                                <select id="fav-min-hours">
+                                    <option value="0">Any</option><option value="1">1 h</option><option value="2">2 h</option>
+                                    <option value="3">3 h</option><option value="4">4 h</option><option value="5">5 h</option><option value="6">6 h</option>
+                                </select></label>
+                            </div>
+                            <div id="fav-visibility-status" role="status" aria-live="polite">Loading favourites…</div>
+                            <ul class="fav-list discover-results" id="fav-list"></ul>
                             <div class="add-item-row">
                                 <input type="text" id="fav-add-name" placeholder="Name (e.g. Orion Nebula)" style="flex: 1;">
                                 <button class="action-btn" id="fav-add-btn" style="flex: 0; padding: 8px 10px; white-space: nowrap;" title="Save current RA/Dec/rotation as favorite">★</button>
@@ -960,7 +1002,7 @@
                                 <option value="P/GALEXGR6/AIS/color">GALEX UV</option>
                                 <option value="P/XMM/PN/color">XMM-Newton X-ray</option>
                                 <option value="P/Fermi/color">Fermi Gamma-ray</option>
-                                <option value="P/ROSAT/intensity">ROSAT X-ray</option>
+                                <option value="P/ROSAT/intensity">ROSAT X-ray (RASS)</option>
                             </optgroup>
                             <optgroup label="Radio">
                                 <option value="P/NVSS/intensity">NVSS 1.4 GHz</option>
@@ -982,6 +1024,13 @@
 
             <div style="text-align:center;padding:16px 0 8px;color:#475569;font-size:0.6rem;letter-spacing:0.3px">© 2026 Giancarlo Erra</div>
 
+            <div id="sky-service-status" hidden>
+                <div id="sky-imagery-status" role="status" aria-live="polite"></div>
+                <button id="sky-imagery-retry" type="button" hidden>Retry sky photographs</button>
+                <details id="sky-imagery-details" hidden><summary>Connection details</summary><div id="sky-imagery-errors"></div></details>
+                <div id="sky-search-status" role="status" aria-live="polite"></div>
+            </div>
+
         </div>
     </div>
 </div>
@@ -989,6 +1038,9 @@
 <script>
     // ===== CORE STATE =====
     let aladin = null;
+    let skyServices = null;
+    let skyCatalogFallback = false;
+    let celestialDataPromise = null;
     let horizonEnabled = false;
     let activeFov = [2.13, 1.2];
     let activeFovName = '';
@@ -1021,6 +1073,8 @@
         { id: 2, name: 'Default Narrow', width: 1.21, height: 0.91 }
     ];
     let favList = [];
+    let favoritesLoaded = false, favoritesLoadError = '';
+    let favoriteRenderVersion = 0, favoriteSeasonCache = null, favoriteDateKey = '';
     let activeFovId = 1;
 
     const API_BASE = window.location.origin;
@@ -1038,7 +1092,7 @@
         const r = await fetch(API_BASE + '/api/location', { credentials: 'include' });
         if (r.ok) {
           const loc = await r.json();
-          if (loc.lat != null && loc.lon != null) {
+          if (Number.isFinite(loc.lat) && Number.isFinite(loc.lon) && Math.abs(loc.lat) <= 90 && Math.abs(loc.lon) <= 180) {
             obsLat = loc.lat;
             obsLon = loc.lon;
             angularSizeLocation = { lat: loc.lat, lon: loc.lon, alt: loc.alt };
@@ -1047,11 +1101,12 @@
             const lonEl = document.getElementById('input-lon');
             if (latEl) latEl.value = obsLat.toFixed(4);
             if (lonEl) lonEl.value = obsLon.toFixed(4);
-          }
+          } else angularSizeLocationError = 'Invalid observing location response.';
         } else {
           angularSizeLocationError = `Observing location request failed (HTTP ${r.status}).`;
         }
       } catch (error) { angularSizeLocationError = `Observing location request failed: ${error.message}`; }
+      renderFavList();
     }
 
     function pushLocationToServer() {
@@ -1195,11 +1250,13 @@
     async function loadFavoritesFromServer() {
         try {
             let resp = await fetch(API_BASE + '/api/skychart/favorites');
-            if (resp.ok) {
-                let data = await resp.json();
-                if (Array.isArray(data)) favList = data;
-            }
-        } catch(e) { console.warn('Failed to load favorites from server:', e); }
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            let data = await resp.json();
+            if (!Array.isArray(data)) throw new Error('Invalid favourite list response');
+            favList = data;
+            favoritesLoaded = true;
+            favoritesLoadError = '';
+        } catch(e) { favoritesLoadError = 'Failed to load favourites: ' + e.message; }
         renderFavList();
     }
 
@@ -1290,15 +1347,106 @@
         return sign + d.toString().padStart(2,'0') + '° ' + m.toString().padStart(2,'0') + "' " + s.padStart(2,'0') + '"';
     }
 
-    function renderFavList() {
+    function favoriteCoordinates(favorite) {
+        const scalar = value => typeof value === 'number' ? value
+            : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+        const ra = scalar(favorite.ra), dec = scalar(favorite.dec);
+        return Number.isFinite(ra) && ra >= 0 && ra < 360 && Number.isFinite(dec) && Math.abs(dec) <= 90 ? { ra, dec } : null;
+    }
+
+    // Each observing date spans mean solar noon to the next at this longitude.
+    // Keep actual dark intervals, including continuous darkness at high latitudes.
+    function favoriteNight(date, lat, lon) {
+        const start = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12) - lon / 360 * 86400000;
+        const end = start + 86400000, step = 300000, intervals = [];
+        let previousTime = start, previousAlt = sunAltAt(new Date(start), lat, lon);
+        let dusk = previousAlt <= -18 ? start : null;
+        for (let time = start + step; time <= end; time += step) {
+            const altitude = sunAltAt(new Date(time), lat, lon);
+            if ((previousAlt > -18) !== (altitude > -18)) {
+                const crossing = previousTime + (-18 - previousAlt) / (altitude - previousAlt) * step;
+                if (altitude <= -18) dusk = crossing;
+                else { intervals.push({ dusk: new Date(dusk), dawn: new Date(crossing) }); dusk = null; }
+            }
+            previousTime = time; previousAlt = altitude;
+        }
+        if (dusk !== null) intervals.push({ dusk: new Date(dusk), dawn: new Date(end) });
+        return intervals;
+    }
+
+    function favoriteNightStats(coordinates, intervals, minAlt) {
+        if (!coordinates) return null;
+        const curves = intervals.map(night => computeAltCurve(coordinates.ra, coordinates.dec, 60, night));
+        const peak = curves.reduce((best, curve) => !best || curve.maxAlt > best.maxAlt ? curve : best, null);
+        return { curves, hours: curves.reduce((total, curve) => total + hoursAboveAlt(curve, minAlt), 0),
+            peak: peak ? peak.samples[peak.maxIdx] : null, dark: intervals.length > 0 };
+    }
+
+    function favoriteMonthStats(rows, year, month, minAlt) {
+        const days = new Date(year, month + 1, 0).getDate();
+        const totals = rows.map(row => row.coordinates ? { hours: 0, peak: null, dark: false } : null);
+        for (let day = 1; day <= days; day++) {
+            const intervals = favoriteNight(new Date(year, month, day, 12), obsLat, obsLon);
+            rows.forEach((row, index) => {
+                const stats = favoriteNightStats(row.coordinates, intervals, minAlt);
+                if (!stats) return;
+                totals[index].hours += stats.hours / days;
+                totals[index].dark = totals[index].dark || stats.dark;
+                if (stats.peak && (!totals[index].peak || stats.peak.alt > totals[index].peak.alt)) totals[index].peak = stats.peak;
+            });
+        }
+        return totals;
+    }
+
+    function rankFavorites(rows, minHours) {
+        return rows.filter(row => !row.stats || row.stats.hours >= minHours).sort((a, b) => {
+            if (!a.stats || !b.stats) return a.stats ? -1 : b.stats ? 1 : a.index - b.index;
+            return b.stats.hours - a.stats.hours || (b.stats.peak?.alt ?? -90) - (a.stats.peak?.alt ?? -90) || a.index - b.index;
+        });
+    }
+
+    function renderFavoriteSeason(months, selectedMonth, minAlt) {
+        const width = 240, height = 32;
+        const bars = months.map((month, index) => {
+            if (!month) return '';
+            const label = new Date(2024, index, 1).toLocaleString(undefined, { month: 'short' });
+            const h = month.hours / 24 * height;
+            return `<rect x="${index * 20 + 3}" y="${height - h}" width="14" height="${h}" fill="#e74c3c"${index === selectedMonth ? ' stroke="#fff" stroke-width="1"' : ' opacity="0.65"'}><title>${escapeHtml(label)}: ${month.hours.toFixed(1)} h/night ≥ ${minAlt}°${month.dark ? '' : ' · no astronomical darkness'}</title></rect>
+                ${index % 2 === 0 ? `<text x="${index * 20 + 10}" y="43" text-anchor="middle" fill="#888" font-family="monospace" font-size="12">${escapeHtml(label.slice(0, 3))}</text>` : ''}`;
+        }).join('');
+        return `<svg class="dc-season" viewBox="0 0 ${width} 48" role="img" aria-label="Monthly average dark hours above ${minAlt} degrees; vertical scale zero to 24 hours">
+            <line x1="0" y1="${height}" x2="${width}" y2="${height}" stroke="#555" stroke-width="0.5"/>
+            <line x1="0" y1="16" x2="${width}" y2="16" stroke="#555" stroke-dasharray="1,2" stroke-width="0.5"/>
+            ${bars}</svg>`;
+    }
+
+    function paintFavoriteCards(rows, view, minAlt, months) {
         let ul = document.getElementById('fav-list');
         ul.innerHTML = '';
-        favList.forEach(f => {
+        rows.forEach(row => {
+            const f = row.favorite, stats = row.stats;
             let li = document.createElement('li');
-            let mosaicBadge = f.mosaic ? `<span style="margin-left:4px;padding:1px 5px;background:rgba(180,100,255,0.25);border:1px solid rgba(180,100,255,0.6);border-radius:3px;font-size:0.6rem;color:#d090ff;vertical-align:middle;">${escapeHtml(f.mosaic.cols)}×${escapeHtml(f.mosaic.rows)}</span>` : '';
-            li.innerHTML = `<span style="color:#eee; flex: 1; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(f.name)}${mosaicBadge}</span>
-                <span class="fav-coords">${formatRA(f.ra)} ${formatDec(f.dec)} r${escapeHtml(f.rotation)}°</span>
-                <button class="item-del-btn" data-id="${escapeHtml(f.id)}" title="Delete">✕</button>`;
+            li.className = 'discover-card';
+            const coords = row.coordinates ? `${formatRA(row.coordinates.ra)} ${formatDec(row.coordinates.dec)}` : 'Invalid saved coordinates';
+            const mosaic = f.mosaic ? ` · ${escapeHtml(f.mosaic.cols)}×${escapeHtml(f.mosaic.rows)} mosaic` : '';
+            let graph = '', description = '';
+            if (stats) {
+                if (view === 'season') {
+                    graph = renderFavoriteSeason(months.map(month => month[row.index]), getObsTime().getMonth(), minAlt);
+                    description = `${stats.hours.toFixed(1)} h/night ≥ ${minAlt}° · monthly average`;
+                } else {
+                    graph = stats.curves.map(curve => renderAltCurveSvg(curve, minAlt) + renderCurveTimeAxis(curve)).join('');
+                    description = `${stats.hours.toFixed(1)}h ≥ ${minAlt}°`;
+                    if (stats.peak) description += ` · max ${Math.round(stats.peak.alt)}° ${azToCardinal(stats.peak.az)} @ ${fmtHM(stats.peak.t)}`;
+                }
+                if (!stats.dark) description = 'No astronomical darkness' + (view === 'season' ? ' this month' : ' for this observing date');
+                else if (stats.peak && stats.peak.alt < 0) description += ' · below horizon during darkness';
+            }
+            li.innerHTML = `<div class="dc-info"><div class="dc-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+                <div class="dc-meta">${coords}${f.rotation != null ? ' · r' + escapeHtml(f.rotation) + '°' : ''}${mosaic}</div>
+                ${graph}<div class="dc-curve-meta">${description}</div></div>
+                <div class="dc-actions"><button class="dc-goto" title="Center on map">◎</button>
+                <button class="item-del-btn" data-id="${escapeHtml(f.id)}" title="Delete">✕</button></div>`;
             li.addEventListener('click', (e) => {
                 if (e.target.classList.contains('item-del-btn')) return;
                 goToFavorite(f);
@@ -1309,6 +1457,51 @@
             });
             ul.appendChild(li);
         });
+    }
+
+    async function renderFavList() {
+        const version = ++favoriteRenderVersion, date = getObsTime();
+        favoriteDateKey = date.toDateString();
+        const view = document.getElementById('fav-view').value;
+        const minAlt = Number(document.getElementById('fav-min-alt').value);
+        const minHours = Number(document.getElementById('fav-min-hours').value);
+        const status = document.getElementById('fav-visibility-status');
+        const showStatus = text => { if (status.textContent !== text) status.textContent = text; };
+        const rows = favList.map((favorite, index) => ({ favorite, index, coordinates: favoriteCoordinates(favorite), stats: null }));
+        paintFavoriteCards(rows, view, minAlt, null);
+        if (favoritesLoadError) { showStatus(favoritesLoadError); return; }
+        if (!favoritesLoaded) { showStatus('Loading favourites…'); return; }
+        if (!rows.length) { showStatus('No saved favourites. Save the current framing below.'); return; }
+        if (!angularSizeLocation || angularSizeLocationError || !Number.isFinite(obsLat) || !Number.isFinite(obsLon) || Math.abs(obsLat) > 90 || Math.abs(obsLon) > 180) {
+            showStatus('Visibility unavailable: ' + (angularSizeLocationError || 'Invalid observing location.')); return;
+        }
+        if (document.getElementById('sp-favorites').classList.contains('collapsed')) return;
+        try {
+            let months = null;
+            if (view === 'season') {
+                const key = JSON.stringify([date.getFullYear(), obsLat, obsLon, minAlt, rows.map(row => row.coordinates)]);
+                if (favoriteSeasonCache?.key === key) months = favoriteSeasonCache.months;
+                else {
+                    months = [];
+                    for (let month = 0; month < 12; month++) {
+                        showStatus(`Calculating season… ${month + 1}/12`);
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                        if (version !== favoriteRenderVersion) return;
+                        months.push(favoriteMonthStats(rows, date.getFullYear(), month, minAlt));
+                    }
+                    favoriteSeasonCache = { key, months };
+                }
+                rows.forEach(row => { row.stats = months[date.getMonth()][row.index]; });
+            } else {
+                const intervals = favoriteNight(date, obsLat, obsLon);
+                rows.forEach(row => { row.stats = favoriteNightStats(row.coordinates, intervals, minAlt); });
+            }
+            const ranked = rankFavorites(rows, minHours);
+            paintFavoriteCards(ranked, view, minAlt, months);
+            const period = view === 'season' ? date.toLocaleString(undefined, { month: 'long', year: 'numeric' }) + ' · monthly averages'
+                : 'Night of ' + date.toLocaleDateString() + ' · times ' + getTimezone();
+            showStatus(`${ranked.length} of ${rows.length} favourites · ${period}. Ranked by dark hours ≥ ${minAlt}°, then peak altitude. Sun below −18°. ${view === 'season' ? 'Bars: 0–24 h/night.' : ''}`);
+        } catch (error) { if (version === favoriteRenderVersion) showStatus('Visibility calculation failed: ' + error.message); }
     }
 
     function addFavorite() {
@@ -1343,6 +1536,7 @@
 
     function goToFavorite(fav) {
         if (!aladin) return;
+        skyServices?.cancelSearch();
         aladin.gotoRaDec(fav.ra, fav.dec);
         if (fav.fov) aladin.setFov(fav.fov);
         if (fav.rotation != null) {
@@ -1402,6 +1596,9 @@
                 chkMoon: document.getElementById('chk-moon').checked,
                 chkPlanets: document.getElementById('chk-planets').checked,
                 solarSystemSize: document.getElementById('solar-system-size').value,
+                favoriteView: document.getElementById('fav-view').value,
+                favoriteMinAlt: document.getElementById('fav-min-alt').value,
+                favoriteMinHours: document.getElementById('fav-min-hours').value,
                 chkNightMode: document.getElementById('chk-nightmode').checked,
                 chkDSO: document.getElementById('chk-dso').checked,
                 chkDsoM: document.getElementById('chk-dso-m').checked,
@@ -1447,7 +1644,7 @@
             if (!s) return;
 
             // Dropdowns
-            if (s.survey) { document.getElementById('survey-select').value = s.survey; aladin.setImageSurvey(s.survey); }
+            if (s.survey) document.getElementById('survey-select').value = s.survey;
             if (s.mount) document.getElementById('mount-select').value = s.mount;
             if (s.activeFovId) { activeFovId = s.activeFovId; }
 
@@ -1476,6 +1673,10 @@
             if (s.chkMoon != null) document.getElementById('chk-moon').checked = s.chkMoon;
             if (s.chkPlanets != null) document.getElementById('chk-planets').checked = s.chkPlanets;
             document.getElementById('solar-system-size').value = s.solarSystemSize === 'angular' ? 'angular' : 'markers';
+            [['fav-view', s.favoriteView], ['fav-min-alt', s.favoriteMinAlt], ['fav-min-hours', s.favoriteMinHours]].forEach(([id, value]) => {
+                const select = document.getElementById(id);
+                if (Array.from(select.options).some(option => option.value === String(value))) select.value = String(value);
+            });
             if (s.chkNightMode != null) {
                 document.getElementById('chk-nightmode').checked = s.chkNightMode;
                 document.getElementById('night-mode-overlay').style.display = s.chkNightMode ? 'block' : 'none';
@@ -1540,6 +1741,7 @@
                 // Backward compat: old saved state had mode='skychart'
                 setHorizonEnabled(true);
             }
+            return s;
         } catch(e) { console.warn('Settings restore error:', e); }
     }
 
@@ -1651,8 +1853,7 @@
     function invalidateAstroNightCache() { _astroNightCache = null; }
 
     // Sample target altitude + azimuth across astronomical night. Returns null if no astro night.
-    function computeAltCurve(raDeg, decDeg, n = 60) {
-        let night = getCachedAstroNight();
+    function computeAltCurve(raDeg, decDeg, n = 60, night = getCachedAstroNight()) {
         if (!night || raDeg == null || decDeg == null) return null;
         let { dusk, dawn } = night;
         let dur = dawn.getTime() - dusk.getTime();
@@ -1854,7 +2055,7 @@
     }
 
     // ===== ALADIN INITIALIZATION =====
-    A.init.then(async () => {
+    aladinReady.then(async () => {
         // 1. Health check — redirect home if DB is unavailable
         try {
             const healthResp = await fetch(`${API_BASE}/api/health`);
@@ -1877,8 +2078,9 @@
         }
 
         aladin = A.aladin('#aladin-lite-div', {
-            survey: 'P/DSS2/color', fov: 10, target: 'M 42',
+            survey: [], fov: 10, target: '0 +0',
             projection: 'STG',
+            log: false,
             showReticle: false, showZoomControl: false, showFullscreenControl: false, showLayersControl: false
         });
 
@@ -1908,7 +2110,17 @@
         });
 
         // Restore saved settings BEFORE loading data
-        loadAndApplySettings();
+        skyServices = APDSkyServices.create({
+            aladin,
+            getCatalogue: async () => {
+                await celestialDataPromise;
+                if (!celestialDataLoaded) throw new Error('The local celestial catalogue could not be loaded');
+                return { stars: allStars, dsos: allDSOs };
+            },
+            onImagery: updateSkyImageryStatus,
+            onSearch: updateSkySearchStatus,
+        });
+        const savedSettings = loadAndApplySettings();
 
         // Load shared location from server (overrides localStorage defaults)
         loadSharedLocation();
@@ -1918,14 +2130,17 @@
         loadFavoritesFromServer();
 
         // Load external celestial data
-        loadCelestialData();
+        celestialDataPromise = loadCelestialData();
+        skyServices.selectSurvey(document.getElementById('survey-select').value);
+        if (savedSettings?.centerRA == null || savedSettings?.centerDec == null) aladin.gotoObject('M 42');
 
         // Hook auto-save to panel interactions + Aladin view changes
         document.getElementById('panel-content').addEventListener('input', debouncedSave);
         document.getElementById('panel-content').addEventListener('change', debouncedSave);
-        try { aladin.on('positionChanged', debouncedSave); } catch(e) {}
+        try { aladin.on('positionChanged', () => { skyServices.cancelSearch(); debouncedSave(); }); } catch(e) {}
         try { aladin.on('zoomChanged', debouncedSave); } catch(e) {}
         window.addEventListener('beforeunload', saveSettings);
+        window.addEventListener('beforeunload', () => skyServices.dispose());
 
         requestAnimationFrame(syncUI);
         setInterval(clockTick, 1000);
@@ -1975,7 +2190,45 @@
         aladinDiv.addEventListener('touchend', function(e) {
             if (e.touches.length < 2) lastPinchDist = null;
         }, { capture: true, passive: true });
+    }).catch(error => {
+        updateSkyImageryStatus({ state: 'error', local: false, error: 'Sky chart could not start: ' + (error.message || String(error)) });
     });
+
+    function updateSkyImageryStatus(status) {
+        skyCatalogFallback = status.local;
+        const el = document.getElementById('sky-imagery-status');
+        const host = status.mirror ? new URL(status.mirror).host : '';
+        const message = status.state === 'error' ? status.error : status.state === 'unavailable'
+            ? 'Sky photographs unavailable. Local star chart active. ' + (status.error || '')
+            : status.state === 'no_coverage' ? 'No survey image returned for this sky position. Local star chart active.'
+            : status.state === 'loading' ? 'Loading sky photographs. Local star chart active.'
+                : status.attempts?.length ? 'Sky photographs: using ' + host + ' after a mirror failure.' : '';
+        if (el.textContent !== message) el.textContent = message;
+        document.getElementById('sky-imagery-retry').hidden = status.state !== 'unavailable';
+        const errors = (status.attempts || []).map(attempt => `${attempt.host}: ${attempt.message}`).join(' · ');
+        const details = document.getElementById('sky-imagery-errors');
+        if (details.textContent !== errors) details.textContent = errors;
+        document.getElementById('sky-imagery-details').hidden = !errors;
+        updateSkyNoticeVisibility();
+    }
+
+    function updateSkySearchStatus(status) {
+        document.getElementById('search-btn').setAttribute('aria-busy', String(status.state === 'loading'));
+        const el = document.getElementById('sky-search-status');
+        const failures = (status.attempts || []).map(attempt => `${attempt.host}: ${attempt.message}`).join(' · ');
+        const message = status.state === 'loading' ? 'Resolving object name…'
+            : status.state === 'error' ? 'Search failed: ' + status.error + (failures ? ' (' + failures + ')' : '')
+                : status.local ? 'Online name resolution unavailable. Position from the bundled catalogue.'
+                    : status.attempts?.length ? 'Position resolved by ' + status.source + ' after a resolver failure.' : '';
+        if (el.textContent !== message) el.textContent = message;
+        updateSkyNoticeVisibility();
+    }
+
+    function updateSkyNoticeVisibility() {
+        document.getElementById('sky-service-status').hidden = !document.getElementById('sky-imagery-status').textContent && !document.getElementById('sky-search-status').textContent;
+    }
+
+    document.getElementById('sky-imagery-retry').addEventListener('click', () => skyServices?.retry());
 
     // ===== LOAD CELESTIAL DATA =====
     async function loadCelestialData() {
@@ -2338,7 +2591,7 @@
         if (!celestialDataLoaded) return;
 
         // --- Constellation Lines ---
-        if (document.getElementById('chk-constellations').checked) {
+        if (document.getElementById('chk-constellations').checked || skyCatalogFallback) {
             ctx.strokeStyle = `rgba(80, 150, 255, ${currentConstOpacity.toFixed(2)})`;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
@@ -2362,7 +2615,7 @@
         }
 
         // --- Stars ---
-        if (document.getElementById('chk-stars').checked) {
+        if (document.getElementById('chk-stars').checked || skyCatalogFallback) {
             let magLimit = parseFloat(document.getElementById('mag-slider').value);
             let opacity = currentStarsOpacity;
 
@@ -2823,6 +3076,7 @@
     // ===== SUB-PANEL TOGGLE =====
     function toggleSubPanel(id) {
         document.getElementById(id).classList.toggle('collapsed');
+        if (id === 'sp-favorites') renderFavList();
         debouncedSave();
     }
 
@@ -2866,6 +3120,7 @@
         document.getElementById('time-display').innerHTML = `LIVE: ${new Date().toLocaleString()}`;
         document.getElementById('time-display').style.color = '#00ff00';
         syncQuickBar();
+        if (favoriteDateKey !== new Date().toDateString()) renderFavList();
     }
     function offsetTime(unit, amt) {
         if (isTimeNow) { manualTime = new Date(); isTimeNow = false; }
@@ -2919,9 +3174,9 @@
         setTimeout(() => window.dispatchEvent(new Event('resize')), 320);
     });
 
-    document.getElementById('search-btn').addEventListener('click', () => { let t = document.getElementById('search-input').value; if(t) { aladin.gotoObject(t); lockFovAfterGoto(); } });
+    document.getElementById('search-btn').addEventListener('click', () => { let t = document.getElementById('search-input').value; if(t) goToTarget(t); });
     document.getElementById('search-input').addEventListener('keypress', (e) => { if(e.key === 'Enter') document.getElementById('search-btn').click(); });
-    document.getElementById('survey-select').addEventListener('change', (e) => { if(aladin) aladin.setImageSurvey(e.target.value); });
+    document.getElementById('survey-select').addEventListener('change', (e) => { skyServices?.selectSurvey(e.target.value); });
     document.getElementById('rotation-slider').addEventListener('input', (e) => {
         document.getElementById('rotation-val').innerText = e.target.value + '°';
         // Sync to bottom-bar slider
@@ -2946,6 +3201,9 @@
     document.getElementById('fov-add-btn').addEventListener('click', addFov);
     document.getElementById('fav-add-btn').addEventListener('click', addFavorite);
     document.getElementById('fav-add-name').addEventListener('keypress', (e) => { if(e.key === 'Enter') addFavorite(); });
+    ['fav-view', 'fav-min-alt', 'fav-min-hours'].forEach(id => {
+        document.getElementById(id).addEventListener('change', renderFavList);
+    });
 
     // ===== MOSAIC CONTROLS =====
     document.getElementById('mosaic-enabled').addEventListener('change', function() {
@@ -2968,7 +3226,7 @@
     // ===== QUICK-BAR BINDINGS =====
     document.getElementById('qb-search-btn').addEventListener('click', () => {
         let t = document.getElementById('qb-search').value.trim();
-        if (t && aladin) { aladin.gotoObject(t); document.getElementById('qb-search').value = ''; lockFovAfterGoto(); }
+        if (t && aladin) { goToTarget(t); document.getElementById('qb-search').value = ''; }
     });
     document.getElementById('qb-search').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') document.getElementById('qb-search-btn').click();
@@ -3007,12 +3265,9 @@
         debouncedSave();
     }
 
-    // Auto-lock after gotoObject resolves (name-based navigation)
-    function lockFovAfterGoto() {
-        setTimeout(() => {
-            let radec = aladin.getRaDec();
-            if (radec) lockFovOnTarget(radec[0], radec[1], null);
-        }, 1500);
+    function goToTarget(target) {
+        if (!aladin) return;
+        aladin.gotoObject(target, { success: radec => lockFovOnTarget(radec[0], radec[1], null) });
     }
 
     // FOV lock toggle — click FOV box to lock/unlock
@@ -3448,6 +3703,7 @@
         if (typeof discoverSearchResults !== 'undefined' && Array.isArray(discoverSearchResults)) {
             attachAltCurves(discoverSearchResults);
         }
+        renderFavList();
     }
 
     // Render a tiny inline altitude-vs-time SVG for a card.
@@ -3597,8 +3853,7 @@
                     aladin.gotoRaDec(ra, dec);
                     lockFovOnTarget(ra, dec, null);
                 } else if (name && aladin) {
-                    aladin.gotoObject(name);
-                    lockFovAfterGoto();
+                    goToTarget(name);
                 }
             });
         });
@@ -3635,8 +3890,7 @@
                     aladin.gotoRaDec(ra, dec);
                     lockFovOnTarget(ra, dec, null);
                 } else if (name && aladin) {
-                    aladin.gotoObject(name);
-                    lockFovAfterGoto();
+                    goToTarget(name);
                 }
             });
         });

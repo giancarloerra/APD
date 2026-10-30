@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@upstash/redis": "^1.36.3",
+    "aladin-lite": "3.6.5",
     "astronomy-engine": "2.1.19",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

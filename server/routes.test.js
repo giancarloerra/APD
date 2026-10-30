@@ -20,6 +20,24 @@ beforeAll(async () => {
 afterAll(async () => { await app?.close(); });
 
 describe("real HTTP/auth and Redis-client route contracts", () => {
+  it("serves the pinned local Aladin module and protects the new sky-service routes", async () => {
+    const response = await fetch(app.base + "/vendor/aladin.js");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toMatch(/javascript/);
+    const source = await response.text();
+    expect(source).toContain("data:application/wasm;base64,");
+    expect(source).toMatch(/export\{.* as default\}/);
+    for (const path of ["/api/skychart/surveys/dss-color/status", "/api/skychart/resolve?name=M42"]) {
+      const blocked = await fetch(app.base + path, { redirect: "manual" });
+      expect(blocked.status).toBe(302);
+      expect(blocked.headers.get("location")).toBe("/login");
+    }
+    const status = await fetch(app.base + "/api/skychart/surveys/dss-color/status", { headers: { Cookie: cookie } });
+    expect(await status.json()).toMatchObject({ state: "loading", mirror: null });
+    const invalid = await fetch(app.base + "/api/skychart/surveys/dss-color/https://example.org", { headers: { Cookie: cookie } });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toMatchObject({ code: "invalid_resource_path" });
+  });
   it("serves the installed browser ephemeris library while keeping the sky chart protected", async () => {
     const response = await fetch(app.base + "/vendor/astronomy-engine.js");
     expect(response.status).toBe(200);

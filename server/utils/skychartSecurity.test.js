@@ -32,13 +32,15 @@ describe("sky-chart HTML security boundaries", () => {
       fovList: [{ id: '" onmouseover="x', name: '<svg onload="x">', width: '<img src=x>', height: 1.2 }],
       favList: [{ id: '" onclick="x', name: '<img src=x onerror="x">', ra: 10, dec: 20, rotation: '<svg>', mosaic: { cols: '<img>', rows: 2 } }],
     };
-    const functions = load(["escapeHtml", "renderFovList", "renderFavList", "formatRA", "formatDec"], context);
-    functions.renderFovList(); functions.renderFavList();
+    const functions = load(["escapeHtml", "renderFovList", "paintFavoriteCards", "formatRA", "formatDec"], context);
+    functions.renderFovList();
+    functions.paintFavoriteCards(context.favList.map((favorite, index) => ({ favorite, index, coordinates: { ra: favorite.ra, dec: favorite.dec }, stats: null })), "night", 30, null);
     const rendered = [...elements["fov-list"], ...elements["fav-list"]].join("");
     expect(rendered).not.toMatch(/<(?:svg|img)\b/);
     expect(rendered).not.toMatch(/" on(?:mouseover|click)="x/);
     expect(rendered).toContain('class="fov-dims"');
-    expect(rendered).toContain('class="fav-coords"');
+    expect(rendered).toContain('class="dc-name"');
+    expect(rendered).toContain('class="dc-meta"');
     expect(rendered).toContain("&lt;svg");
   });
 
