@@ -483,6 +483,7 @@
         #fav-list .item-del-btn { color: #ff4444; }
         #fav-list .dc-season { display: block; width: 100%; height: 52px; margin-top: 4px; }
         #fav-visibility-status { font-size: 0.7rem; color: #999; line-height: 1.5; margin-bottom: 6px; }
+        #fav-selected { font-size: 0.8rem; color: var(--accent); margin-bottom: 6px; overflow-wrap: break-word; }
         #sp-favorites .vis-filter-bar label { margin: 0; display: inline-flex; align-items: center; gap: 4px; }
         #sp-favorites .vis-filter-bar select { width: auto; margin: 0; }
         /* Visibility filter bar */
@@ -680,9 +681,17 @@
                     </div>
                     <div class="sub-panel-body">
                         <div class="control-group">
+                            <div id="fav-selected" role="status" aria-live="polite" hidden></div>
+                            <input type="text" id="fav-search" placeholder="Search favourites by name…" aria-label="Search favourites by name">
                             <div class="vis-filter-bar">
                                 <label for="fav-view">View
                                 <select id="fav-view"><option value="night">Night</option><option value="season">Season</option></select></label>
+                                <label for="fav-sort">Sort
+                                <select id="fav-sort">
+                                    <option value="ranked">Ranked</option>
+                                    <option value="created" title="Newest added first">Creation Date</option>
+                                    <option value="alphabetical" title="A–Z">Alphabetically</option>
+                                </select></label>
                                 <label for="fav-min-alt">Alt ≥
                                 <select id="fav-min-alt">
                                     <option value="0">0°</option><option value="20">20°</option><option value="30" selected>30°</option>
@@ -1073,6 +1082,7 @@
         { id: 2, name: 'Default Narrow', width: 1.21, height: 0.91 }
     ];
     let favList = [];
+    let selectedFavoriteId = null;
     let favoritesLoaded = false, favoritesLoadError = '';
     let favoriteRenderVersion = 0, favoriteSeasonCache = null, favoriteDateKey = '';
     let activeFovId = 1;
@@ -1254,6 +1264,7 @@
             let data = await resp.json();
             if (!Array.isArray(data)) throw new Error('Invalid favourite list response');
             favList = data;
+            if (selectedFavoriteId != null && !favList.some(favorite => favorite.id === selectedFavoriteId)) selectedFavoriteId = null;
             favoritesLoaded = true;
             favoritesLoadError = '';
         } catch(e) { favoritesLoadError = 'Failed to load favourites: ' + e.message; }
@@ -1398,8 +1409,10 @@
         return totals;
     }
 
-    function rankFavorites(rows, minHours) {
+    function rankFavorites(rows, minHours, order = 'ranked') {
         return rows.filter(row => !row.stats || row.stats.hours >= minHours).sort((a, b) => {
+            if (order === 'created') return b.index - a.index;
+            if (order === 'alphabetical') return String(a.favorite.name).localeCompare(String(b.favorite.name), undefined, { sensitivity: 'base' }) || a.index - b.index;
             if (!a.stats || !b.stats) return a.stats ? -1 : b.stats ? 1 : a.index - b.index;
             return b.stats.hours - a.stats.hours || (b.stats.peak?.alt ?? -90) - (a.stats.peak?.alt ?? -90) || a.index - b.index;
         });
@@ -1422,11 +1435,18 @@
 
     function paintFavoriteCards(rows, view, minAlt, months) {
         let ul = document.getElementById('fav-list');
+        const selected = selectedFavoriteId == null ? null : favList.find(favorite => favorite.id === selectedFavoriteId);
+        const selection = document.getElementById('fav-selected');
+        const selectedText = selected ? 'Selected favourite: ' + selected.name : '';
+        if (selection.textContent !== selectedText) selection.textContent = selectedText;
+        selection.hidden = !selected;
         ul.innerHTML = '';
         rows.forEach(row => {
             const f = row.favorite, stats = row.stats;
             let li = document.createElement('li');
-            li.className = 'discover-card';
+            const isSelected = !!selected && f.id === selected.id;
+            li.className = 'discover-card' + (isSelected ? ' active' : '');
+            li.setAttribute('aria-current', isSelected ? 'true' : 'false');
             const coords = row.coordinates ? `${formatRA(row.coordinates.ra)} ${formatDec(row.coordinates.dec)}` : 'Invalid saved coordinates';
             const mosaic = f.mosaic ? ` · ${escapeHtml(f.mosaic.cols)}×${escapeHtml(f.mosaic.rows)} mosaic` : '';
             let graph = '', description = '';
@@ -1463,12 +1483,15 @@
         const version = ++favoriteRenderVersion, date = getObsTime();
         favoriteDateKey = date.toDateString();
         const view = document.getElementById('fav-view').value;
+        const order = document.getElementById('fav-sort').value;
         const minAlt = Number(document.getElementById('fav-min-alt').value);
         const minHours = Number(document.getElementById('fav-min-hours').value);
+        const query = document.getElementById('fav-search').value.trim().toLowerCase();
+        const matchesName = row => String(row.favorite.name).toLowerCase().includes(query);
         const status = document.getElementById('fav-visibility-status');
         const showStatus = text => { if (status.textContent !== text) status.textContent = text; };
         const rows = favList.map((favorite, index) => ({ favorite, index, coordinates: favoriteCoordinates(favorite), stats: null }));
-        paintFavoriteCards(rows, view, minAlt, null);
+        paintFavoriteCards(rankFavorites(rows, 0, order).filter(matchesName), view, minAlt, null);
         if (favoritesLoadError) { showStatus(favoritesLoadError); return; }
         if (!favoritesLoaded) { showStatus('Loading favourites…'); return; }
         if (!rows.length) { showStatus('No saved favourites. Save the current framing below.'); return; }
@@ -1496,11 +1519,13 @@
                 const intervals = favoriteNight(date, obsLat, obsLon);
                 rows.forEach(row => { row.stats = favoriteNightStats(row.coordinates, intervals, minAlt); });
             }
-            const ranked = rankFavorites(rows, minHours);
+            const ranked = rankFavorites(rows, minHours, order).filter(matchesName);
             paintFavoriteCards(ranked, view, minAlt, months);
             const period = view === 'season' ? date.toLocaleString(undefined, { month: 'long', year: 'numeric' }) + ' · monthly averages'
                 : 'Night of ' + date.toLocaleDateString() + ' · times ' + getTimezone();
-            showStatus(`${ranked.length} of ${rows.length} favourites · ${period}. Ranked by dark hours ≥ ${minAlt}°, then peak altitude. Sun below −18°. ${view === 'season' ? 'Bars: 0–24 h/night.' : ''}`);
+            const ordering = order === 'created' ? 'Newest added first.' : order === 'alphabetical' ? 'Alphabetical order (A–Z).'
+                : `Ranked by dark hours ≥ ${minAlt}°, then peak altitude.`;
+            showStatus(`${query && !ranked.length ? 'No favourites match the current filters. ' : ''}${ranked.length} of ${rows.length} favourites · ${period}. ${ordering} Sun below −18°. ${view === 'season' ? 'Bars: 0–24 h/night.' : ''}`);
         } catch (error) { if (version === favoriteRenderVersion) showStatus('Visibility calculation failed: ' + error.message); }
     }
 
@@ -1529,6 +1554,7 @@
     }
 
     function deleteFavorite(id) {
+        if (selectedFavoriteId === id) selectedFavoriteId = null;
         favList = favList.filter(f => f.id !== id);
         renderFavList();
         saveFavoritesToServer();
@@ -1565,6 +1591,8 @@
             document.getElementById('mosaic-controls').style.display = 'none';
             renderMosaicTiles();
         }
+        selectedFavoriteId = fav.id;
+        renderFavList();
         debouncedSave();
     }
 
@@ -1597,6 +1625,8 @@
                 chkPlanets: document.getElementById('chk-planets').checked,
                 solarSystemSize: document.getElementById('solar-system-size').value,
                 favoriteView: document.getElementById('fav-view').value,
+                favoriteSort: document.getElementById('fav-sort').value,
+                selectedFavoriteId: selectedFavoriteId,
                 favoriteMinAlt: document.getElementById('fav-min-alt').value,
                 favoriteMinHours: document.getElementById('fav-min-hours').value,
                 chkNightMode: document.getElementById('chk-nightmode').checked,
@@ -1673,7 +1703,8 @@
             if (s.chkMoon != null) document.getElementById('chk-moon').checked = s.chkMoon;
             if (s.chkPlanets != null) document.getElementById('chk-planets').checked = s.chkPlanets;
             document.getElementById('solar-system-size').value = s.solarSystemSize === 'angular' ? 'angular' : 'markers';
-            [['fav-view', s.favoriteView], ['fav-min-alt', s.favoriteMinAlt], ['fav-min-hours', s.favoriteMinHours]].forEach(([id, value]) => {
+            selectedFavoriteId = s.selectedFavoriteId ?? null;
+            [['fav-view', s.favoriteView], ['fav-sort', s.favoriteSort], ['fav-min-alt', s.favoriteMinAlt], ['fav-min-hours', s.favoriteMinHours]].forEach(([id, value]) => {
                 const select = document.getElementById(id);
                 if (Array.from(select.options).some(option => option.value === String(value))) select.value = String(value);
             });
@@ -3201,7 +3232,8 @@
     document.getElementById('fov-add-btn').addEventListener('click', addFov);
     document.getElementById('fav-add-btn').addEventListener('click', addFavorite);
     document.getElementById('fav-add-name').addEventListener('keypress', (e) => { if(e.key === 'Enter') addFavorite(); });
-    ['fav-view', 'fav-min-alt', 'fav-min-hours'].forEach(id => {
+    document.getElementById('fav-search').addEventListener('input', renderFavList);
+    ['fav-view', 'fav-sort', 'fav-min-alt', 'fav-min-hours'].forEach(id => {
         document.getElementById(id).addEventListener('change', renderFavList);
     });
 

@@ -214,13 +214,13 @@ describe("sky-chart angular-size compatibility", () => {
     expect(segments).toBeGreaterThan(0);
   });
 
-  it("restores older sky settings and saves the new choice under the original storage key", () => {
+  it.each(["created", "alphabetical"])("restores older sky settings and saves %s favourite order under the original storage key", order => {
     const old = { mode: "skychart", chkMoon: true, chkPlanets: true, activeFovId: 17, rotation: "18", lat: "0", lon: "0", centerRA: 12.79, centerDec: 9, viewFov: 1.2 };
     let stored = JSON.stringify(old);
     const elements = new Map();
     const warnings = [];
-    const favoriteSelects = { "fav-view": ["night", "season"], "fav-min-alt": ["0", "20", "30", "40", "50", "60"], "fav-min-hours": ["0", "1", "2", "3", "4", "5", "6"] };
-    const favoriteDefaults = { "fav-view": "night", "fav-min-alt": "30", "fav-min-hours": "0" };
+    const favoriteSelects = { "fav-view": ["night", "season"], "fav-sort": ["ranked", "created", "alphabetical"], "fav-min-alt": ["0", "20", "30", "40", "50", "60"], "fav-min-hours": ["0", "1", "2", "3", "4", "5", "6"] };
+    const favoriteDefaults = { "fav-view": "night", "fav-sort": "ranked", "fav-min-alt": "30", "fav-min-hours": "0" };
     const element = id => {
       if (!elements.has(id)) elements.set(id, { value: favoriteDefaults[id] ?? (id === "solar-system-size" ? "markers" : ""), options: (favoriteSelects[id] || []).map(value => ({ value })), checked: false, style: {}, classList: { contains: () => false, toggle() {}, add() {} } });
       return elements.get(id);
@@ -230,7 +230,7 @@ describe("sky-chart angular-size compatibility", () => {
       localStorage: { getItem: key => { expect(key).toBe("astro-sky-dashboard-v1"); return stored; }, setItem: (key, value) => { expect(key).toBe("astro-sky-dashboard-v1"); stored = value; } },
       console: { warn: (...args) => warnings.push(args) }, SETTINGS_KEY: "astro-sky-dashboard-v1",
       aladin: { getRaDec: () => [12.79, 9], getFov: () => [1.2, 0.9], gotoRaDec() {}, setFov() {} },
-      horizonEnabled: false, activeFovId: 1, fovLocked: false, fovLockedRaDec: null,
+      horizonEnabled: false, activeFovId: 1, selectedFavoriteId: null, fovLocked: false, fovLockedRaDec: null,
       mosaicActive: false, mosaicCols: 2, mosaicRows: 2, mosaicOverlap: 10,
       updateMosaicInfo() {},
       setHorizonEnabled: value => { context.horizonEnabled = value; },
@@ -246,23 +246,34 @@ describe("sky-chart angular-size compatibility", () => {
     expect(context.obsLon).toBe(0);
     expect(context.horizonEnabled).toBe(true);
     expect(element("fav-view").value).toBe("night");
+    expect(element("fav-sort").value).toBe("ranked");
+    expect(context.selectedFavoriteId).toBeNull();
     expect(element("fav-min-alt").value).toBe("30");
     expect(element("fav-min-hours").value).toBe("0");
     element("solar-system-size").value = "angular";
     element("fav-view").value = "season";
+    element("fav-sort").value = order;
+    context.selectedFavoriteId = 42;
     element("fav-min-alt").value = "40";
     element("fav-min-hours").value = "2";
     context.saveSettings();
-    expect(JSON.parse(stored)).toMatchObject({ solarSystemSize: "angular", chkMoon: true, chkPlanets: true, activeFovId: 17, rotation: "18", lat: "0", lon: "0", viewFov: 1.2, favoriteView: "season", favoriteMinAlt: "40", favoriteMinHours: "2" });
+    expect(JSON.parse(stored)).toMatchObject({ solarSystemSize: "angular", chkMoon: true, chkPlanets: true, activeFovId: 17, rotation: "18", lat: "0", lon: "0", viewFov: 1.2, favoriteView: "season", favoriteSort: order, selectedFavoriteId: 42, favoriteMinAlt: "40", favoriteMinHours: "2" });
     element("solar-system-size").value = "markers";
     element("fav-view").value = "night";
+    element("fav-sort").value = "ranked";
+    context.selectedFavoriteId = null;
     element("fav-min-alt").value = "30";
     element("fav-min-hours").value = "0";
     context.loadAndApplySettings();
     expect(element("solar-system-size").value).toBe("angular");
     expect(element("fav-view").value).toBe("season");
+    expect(element("fav-sort").value).toBe(order);
+    expect(context.selectedFavoriteId).toBe(42);
     expect(element("fav-min-alt").value).toBe("40");
     expect(element("fav-min-hours").value).toBe("2");
+    stored = JSON.stringify({ ...JSON.parse(stored), selectedFavoriteId: null });
+    context.loadAndApplySettings();
+    expect(context.selectedFavoriteId).toBeNull();
     expect(warnings).toEqual([]);
   });
 
