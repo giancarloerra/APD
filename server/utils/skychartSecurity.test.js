@@ -23,12 +23,14 @@ describe("sky-chart HTML security boundaries", () => {
 
   it("protects persisted FOV/favourite names and sibling fields at the HTML sink", () => {
     const elements = { "fov-list": [], "fav-list": [] };
+    const selection = { textContent: "", hidden: true };
     const context = {
       document: {
-        getElementById: id => ({ set innerHTML(_value) {}, appendChild: node => elements[id].push(node.innerHTML) }),
-        createElement: () => ({ innerHTML: "", addEventListener() {}, querySelector: () => ({ addEventListener() {} }) }),
+        getElementById: id => id === "fav-selected" ? selection : ({ set innerHTML(_value) {}, appendChild: node => elements[id].push(node.innerHTML) }),
+        createElement: () => ({ innerHTML: "", setAttribute() {}, addEventListener() {}, querySelector: () => ({ addEventListener() {} }) }),
       },
       activeFovId: 1,
+      selectedFavoriteId: '" onclick="x',
       fovList: [{ id: '" onmouseover="x', name: '<svg onload="x">', width: '<img src=x>', height: 1.2 }],
       favList: [{ id: '" onclick="x', name: '<img src=x onerror="x">', ra: 10, dec: 20, rotation: '<svg>', mosaic: { cols: '<img>', rows: 2 } }],
     };
@@ -42,6 +44,8 @@ describe("sky-chart HTML security boundaries", () => {
     expect(rendered).toContain('class="dc-name"');
     expect(rendered).toContain('class="dc-meta"');
     expect(rendered).toContain("&lt;svg");
+    expect(selection.textContent).toBe('Selected favourite: <img src=x onerror="x">');
+    expect(selection.hidden).toBe(false);
   });
 
   it("protects Discover names, attributes and image URLs while retaining the original card structure", () => {
