@@ -256,6 +256,8 @@ describe("sky-chart angular-size compatibility", () => {
     expect(JSON.parse(stored)).toMatchObject({ solarSystemSize: "angular", chkMoon: true, chkPlanets: true, activeFovId: 17, rotation: "18", lat: "0", lon: "0", viewFov: 1.2, favoriteView: "season", favoriteMinAlt: "40", favoriteMinHours: "2" });
     element("solar-system-size").value = "markers";
     element("fav-view").value = "night";
+    element("fav-min-alt").value = "30";
+    element("fav-min-hours").value = "0";
     context.loadAndApplySettings();
     expect(element("solar-system-size").value).toBe("angular");
     expect(element("fav-view").value).toBe("season");
